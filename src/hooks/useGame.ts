@@ -60,7 +60,6 @@ export function useGame() {
   }, [game])
 
   // Pull Telegram CloudStorage records and merge with local bests.
-  // Retry once — CloudStorage is sometimes not ready on the first tick.
   useEffect(() => {
     let cancelled = false
 
@@ -71,13 +70,21 @@ export function useGame() {
     }
 
     void apply()
-    const retry = window.setTimeout(() => {
-      void apply()
-    }, 800)
+    const retries = [500, 1500, 3000].map((ms) =>
+      window.setTimeout(() => {
+        void apply()
+      }, ms),
+    )
+
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void apply()
+    }
+    document.addEventListener('visibilitychange', onVisible)
 
     return () => {
       cancelled = true
-      window.clearTimeout(retry)
+      retries.forEach((id) => window.clearTimeout(id))
+      document.removeEventListener('visibilitychange', onVisible)
     }
   }, [game])
 
@@ -183,6 +190,9 @@ export function useGame() {
     play: () => {
       requestTelegramFullscreen()
       syncTelegramSafeArea()
+      void syncRecordsWithCloud().then((records) => {
+        game.applySyncedRecords(records.bestScore, records.highCombo)
+      })
       game.play()
     },
     pause: () => game.pause(),
