@@ -145,39 +145,3 @@ export function initTelegramMiniApp(): void {
   wa.onEvent?.('safeAreaChanged', resync)
   wa.onEvent?.('contentSafeAreaChanged', resync)
 }
-
-export function telegramHaptic(
-  kind: 'collect' | 'combo' | 'death' | 'ui',
-): boolean {
-  const wa = getTelegramWebApp()
-  const hf = wa?.HapticFeedback
-  if (!hf || !wa?.initData) return false
-
-  // Desktop Telegram exposes the API but has nothing to vibrate.
-  const platform = (wa.platform || '').toLowerCase()
-  if (platform === 'tdesktop' || platform === 'web' || platform === 'weba') {
-    return false
-  }
-
-  try {
-    switch (kind) {
-      case 'collect':
-        hf.impactOccurred('medium')
-        break
-      case 'combo':
-        hf.impactOccurred('heavy')
-        hf.notificationOccurred('success')
-        break
-      case 'death':
-        hf.notificationOccurred('error')
-        hf.impactOccurred('heavy')
-        break
-      case 'ui':
-        hf.impactOccurred('light')
-        break
-    }
-    return true
-  } catch {
-    return false
-  }
-}

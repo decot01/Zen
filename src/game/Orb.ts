@@ -62,6 +62,7 @@ export class Orb {
     dt: number,
     player?: { x: number; y: number } | null,
     bounds?: { minX: number; maxX: number; minY: number; maxY: number },
+    hazards: readonly { x: number; y: number; radius: number }[] = [],
   ): void {
     this.time += dt
     this.spawnProgress = clamp(
@@ -76,7 +77,7 @@ export class Orb {
         this.alive = false
         return
       }
-      this.updateFlee(dt, player, bounds)
+      this.updateFlee(dt, player, bounds, hazards)
     }
 
     const floatAmp =
@@ -101,6 +102,7 @@ export class Orb {
     dt: number,
     player?: { x: number; y: number } | null,
     bounds?: { minX: number; maxX: number; minY: number; maxY: number },
+    hazards: readonly { x: number; y: number; radius: number }[] = [],
   ): void {
     if (!player || !bounds) return
 
@@ -108,22 +110,58 @@ export class Orb {
     const dy = this.baseY - player.y
     const dist = length(dx, dy)
 
+    let fleeX = 0
+    let fleeY = 0
     if (dist < PRIZE_ORB.fleeRange && dist > 1) {
       const dir = normalize(dx, dy)
-      // Stronger flee when closer — still reacts early on approach.
       const urgency = 1 - clamp(dist / PRIZE_ORB.fleeRange, 0, 1)
       const urgencySq = urgency * urgency
       const accel = PRIZE_ORB.fleeSpeed * (1.55 + urgency * 1.4 + urgencySq * 2.4)
-      this.fleeVx += dir.x * accel * dt
-      this.fleeVy += dir.y * accel * dt
+      fleeX = dir.x * accel
+      fleeY = dir.y * accel
 
-      // Sideways weave so straight chases miss more often.
       const weave = Math.sin(this.time * 7.5 + this.phase) * urgency * 120
-      this.fleeVx += -dir.y * weave * dt
-      this.fleeVy += dir.x * weave * dt
+      fleeX += -dir.y * weave
+      fleeY += dir.x * weave
     }
 
-    // Less drag while threatened so it keeps speed.
+    // Steer around hazards while fleeing — curve past, don't panic-run from them.
+    let avoidX = 0
+    let avoidY = 0
+    for (const hazard of hazards) {
+      const clearDist = this.radius + hazard.radius + 28
+      const hx = this.baseX - hazard.x
+      const hy = this.baseY - hazard.y
+      const hDist = length(hx, hy)
+      if (hDist >= clearDist || hDist < 0.001) continue
+
+      const away = normalize(hx, hy)
+      // Prefer the lateral side that still points away from the player.
+      let sideX = -away.y
+      let sideY = away.x
+      if (fleeX !== 0 || fleeY !== 0) {
+        if (sideX * fleeX + sideY * fleeY < 0) {
+          sideX = -sideX
+          sideY = -sideY
+        }
+      }
+      const closeness = 1 - clamp(hDist / clearDist, 0, 1)
+      const weight = closeness * closeness
+      // Mix outward + along preferred side so it arcs around instead of sticking.
+      avoidX += (away.x * 0.45 + sideX * 0.9) * weight
+      avoidY += (away.y * 0.45 + sideY * 0.9) * weight
+    }
+
+    if (avoidX !== 0 || avoidY !== 0) {
+      const avoidDir = normalize(avoidX, avoidY)
+      const avoidAccel = PRIZE_ORB.fleeSpeed * 2.1
+      this.fleeVx += (fleeX + avoidDir.x * avoidAccel) * dt
+      this.fleeVy += (fleeY + avoidDir.y * avoidAccel) * dt
+    } else {
+      this.fleeVx += fleeX * dt
+      this.fleeVy += fleeY * dt
+    }
+
     const threatened = dist < PRIZE_ORB.fleeRange * 0.75
     const damp = Math.exp(-(threatened ? 0.7 : 1.8) * dt)
     this.fleeVx *= damp
@@ -142,7 +180,6 @@ export class Orb {
     this.baseX = clamp(this.baseX, bounds.minX, bounds.maxX)
     this.baseY = clamp(this.baseY, bounds.minY, bounds.maxY)
 
-    // Soft bounce off playfield edges.
     if (this.baseX <= bounds.minX || this.baseX >= bounds.maxX) this.fleeVx *= -0.65
     if (this.baseY <= bounds.minY || this.baseY >= bounds.maxY) this.fleeVy *= -0.65
   }

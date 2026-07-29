@@ -413,8 +413,18 @@ export class Game {
       minY: SPAWN.padding + topInset,
       maxY: this.height - SPAWN.padding - SPAWN.bottomInset,
     }
+    const hazards = this.enemies.map((e) => ({
+      x: e.x,
+      y: e.y,
+      radius: e.radius,
+    }))
     for (const orb of this.orbs) {
-      orb.update(dt, { x: this.player.x, y: this.player.y }, orbBounds)
+      orb.update(
+        dt,
+        { x: this.player.x, y: this.player.y },
+        orbBounds,
+        hazards,
+      )
     }
     for (const enemy of this.enemies) enemy.update(dt)
 
@@ -537,11 +547,14 @@ export class Game {
     )
 
     this.audio.playCollect()
-    this.haptics.pulse(isPrize ? 'combo' : 'collect')
+    if (isPrize || (this.combo > prevCombo && this.combo > 1)) {
+      this.haptics.pulse('combo')
+    } else {
+      this.haptics.pulse('collect')
+    }
     if (this.combo > prevCombo && this.combo > 1) {
       this.particles.emitCombo(this.player.x, this.player.y, this.combo)
       this.audio.playCombo(this.combo)
-      this.haptics.pulse('combo')
     }
 
     if (isPrize) {

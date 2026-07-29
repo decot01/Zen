@@ -4,6 +4,7 @@ import {
   type ReactNode,
 } from 'react'
 import { cva, type VariantProps } from 'class-variance-authority'
+import { pulseHaptic } from '@/lib/feel'
 import { cn } from '@/lib/utils'
 
 /**
@@ -47,6 +48,7 @@ export function Button({
   size,
   children,
   type = 'button',
+  onPointerDown,
   ...props
 }: ButtonProps) {
   const childArray = Children.toArray(children)
@@ -56,6 +58,10 @@ export function Button({
     <button
       type={type}
       className={cn(buttonVariants({ variant, size }), className)}
+      onPointerDown={(e) => {
+        if (!e.button) pulseHaptic('tap')
+        onPointerDown?.(e)
+      }}
       {...props}
     >
       <span className="zen-btn__stroke" aria-hidden />
