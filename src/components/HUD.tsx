@@ -1,6 +1,8 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { Badge } from '@/components/ui/badge'
+import { glassSurfaceClassName } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { cn } from '@/lib/utils'
 import { transitionSpring, transitionSpringSnappy } from '@/lib/motion'
 import { Score } from './Score'
 
@@ -64,7 +66,7 @@ export function HUD({ score, best, combo, elapsed }: HUDProps) {
         animate={{ opacity: 1, y: 0 }}
         transition={transitionSpringSnappy}
       >
-        <Card className="border-border/60 bg-card/70 px-4 py-2.5 backdrop-blur-md">
+        <Card className={cn(glassSurfaceClassName, 'px-4 py-2.5')}>
           <div className="grid grid-cols-3 items-center gap-3">
             <HudStat label="Score" value={score} align="left" />
 

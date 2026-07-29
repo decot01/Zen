@@ -14,6 +14,10 @@ import { cn } from '@/lib/utils'
  * @see https://github.com/decot01/BetterUI
  */
 
+/** Exact HUD banner Card surface classes. */
+export const glassSurfaceClassName =
+  'zen-squircle rounded-xl border border-border/60 bg-card/70 text-card-foreground shadow-sm backdrop-blur-md'
+
 const buttonVariants = cva('zen-btn', {
   variants: {
     variant: {
@@ -22,7 +26,7 @@ const buttonVariants = cva('zen-btn', {
       outline: 'zen-btn--outline',
       ghost: 'zen-btn--ghost',
       destructive: 'zen-btn--destructive',
-      /** Same surface as HUD banner Card. */
+      /** Surface matches HUD banner Card 1:1. */
       glass: 'zen-btn--glass',
     },
     size: {
@@ -55,6 +59,7 @@ export function Button({
 }: ButtonProps) {
   const childArray = Children.toArray(children)
   const hasIconOnly = size === 'icon'
+  const isGlass = variant === 'glass'
 
   return (
     <button
@@ -67,7 +72,14 @@ export function Button({
       {...props}
     >
       <span className="zen-btn__stroke" aria-hidden />
-      <span className="zen-btn__fill" aria-hidden />
+      {isGlass ? (
+        <span
+          className={cn('zen-btn__glass-surface', glassSurfaceClassName)}
+          aria-hidden
+        />
+      ) : (
+        <span className="zen-btn__fill" aria-hidden />
+      )}
       <span className="zen-btn__raycast" aria-hidden />
       <span
         className={cn(

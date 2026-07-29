@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { IconToggle } from '@/components/IconToggle'
 import { IntelGlow } from '@/components/IntelGlow'
 import { staggerContainer, staggerItem } from '@/lib/motion'
+import { version } from '../../package.json'
 
 interface MenuProps {
   best: number
@@ -89,6 +90,10 @@ export function Menu({
           </div>
         </motion.div>
       </motion.div>
+
+      <p className="pointer-events-none absolute inset-x-0 bottom-0 pb-[max(1rem,var(--zen-safe-bottom))] text-center text-xs tabular-nums tracking-[0.14em] text-muted-foreground/50">
+        {version}
+      </p>
     </div>
   )
 }

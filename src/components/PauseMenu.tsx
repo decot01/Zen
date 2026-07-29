@@ -40,7 +40,7 @@ export function PauseMenu({
         animate="animate"
         exit="exit"
       >
-        <Card className="bg-card/95 shadow-2xl">
+        <Card className="rounded-[2rem] bg-card/95 shadow-2xl">
           <CardHeader className="items-center pb-2">
             <CardTitle className="text-xl">Paused</CardTitle>
           </CardHeader>

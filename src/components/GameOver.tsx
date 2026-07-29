@@ -37,7 +37,7 @@ export function GameOver({
         animate="animate"
         exit="exit"
       >
-        <Card className="border-border/70 bg-card/95 shadow-2xl backdrop-blur-md">
+        <Card className="rounded-[2rem] border-border/70 bg-card/95 shadow-2xl backdrop-blur-md">
           <CardHeader className="items-center gap-3 pb-2">
             <div className="flex flex-col items-center">
               <span className="text-xs uppercase tracking-[0.14em] text-muted-foreground">
@@ -65,7 +65,7 @@ export function GameOver({
           </CardHeader>
 
           <CardContent>
-            <div className="grid grid-cols-2 gap-3 rounded-lg border border-border bg-background/60 p-3">
+            <div className="zen-squircle grid grid-cols-2 gap-3 rounded-3xl border border-border bg-background/60 p-3">
               <div className="text-center">
                 <div className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
                   Best
