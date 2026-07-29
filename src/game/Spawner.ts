@@ -72,7 +72,7 @@ export class Spawner {
     anchors: readonly SpawnAvoid[],
     threats: readonly SpawnAvoid[],
     extraPlayerSafe = 0,
-    threatBias = SPAWN.orbThreatBiasByStage[0]!,
+    threatBias: number = SPAWN.orbThreatBiasByStage[0]!,
   ): { x: number; y: number } | null {
     const bounds = this.bounds(width, height)
     const useCluster = anchors.length > 0
@@ -181,7 +181,7 @@ export class Spawner {
   private pointNearPlayer(
     player: SpawnAvoid | undefined,
     bounds: { minX: number; maxX: number; minY: number; maxY: number },
-    attempt: number,
+    _attempt: number,
     maxScale = 1,
   ): { x: number; y: number } | null {
     if (!player) {

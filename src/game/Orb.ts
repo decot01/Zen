@@ -9,8 +9,8 @@ export class Orb {
   y: number
   baseX: number
   baseY: number
-  radius = WHITE_ORB.radius
-  hitRadius = WHITE_ORB.hitRadius
+  radius: number = WHITE_ORB.radius
+  hitRadius: number = WHITE_ORB.hitRadius
   time = 0
   spawnProgress = 0
   phase: number
