@@ -1,4 +1,5 @@
 import { DIFFICULTY, SPAWN } from './constants'
+import { getChromeInsets, isTelegramMiniApp } from '@/lib/telegram'
 import { distance } from '@/utils/math'
 import { randomRange } from '@/utils/random'
 
@@ -142,7 +143,9 @@ export class Spawner {
   private bounds(width: number, height: number) {
     const minX = SPAWN.padding
     const maxX = width - SPAWN.padding
-    const minY = SPAWN.padding + SPAWN.topInset
+    const chromeTop = isTelegramMiniApp() ? getChromeInsets().top : 0
+    const topInset = Math.max(SPAWN.topInset, chromeTop + 72)
+    const minY = SPAWN.padding + topInset
     const maxY = height - SPAWN.padding - SPAWN.bottomInset
     return {
       minX,

@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { Game, type GameSnapshot } from '@/game/Game'
-import { getTelegramWebApp } from '@/lib/telegram'
+import {
+  getTelegramWebApp,
+  requestTelegramFullscreen,
+  syncTelegramSafeArea,
+} from '@/lib/telegram'
 
 const INITIAL: GameSnapshot = {
   phase: 'menu',
@@ -73,10 +77,14 @@ export function useGame() {
     observer.observe(container)
 
     const wa = getTelegramWebApp()
-    const onViewport = () => resize()
+    const onViewport = () => {
+      syncTelegramSafeArea()
+      resize()
+    }
     wa?.onEvent?.('viewportChanged', onViewport)
     wa?.onEvent?.('safeAreaChanged', onViewport)
     wa?.onEvent?.('contentSafeAreaChanged', onViewport)
+    wa?.onEvent?.('fullscreenChanged', onViewport)
     window.addEventListener('resize', resize)
 
     return () => {
@@ -85,6 +93,7 @@ export function useGame() {
       wa?.offEvent?.('viewportChanged', onViewport)
       wa?.offEvent?.('safeAreaChanged', onViewport)
       wa?.offEvent?.('contentSafeAreaChanged', onViewport)
+      wa?.offEvent?.('fullscreenChanged', onViewport)
       game.stopLoop()
     }
   }, [game])
@@ -148,10 +157,18 @@ export function useGame() {
     onPointerDown,
     onPointerMove,
     onPointerUp,
-    play: () => game.play(),
+    play: () => {
+      requestTelegramFullscreen()
+      syncTelegramSafeArea()
+      game.play()
+    },
     pause: () => game.pause(),
     resume: () => game.resume(),
-    restart: () => game.restart(),
+    restart: () => {
+      requestTelegramFullscreen()
+      syncTelegramSafeArea()
+      game.restart()
+    },
     quitToMenu: () => game.quitToMenu(),
     toggleMute: () => game.toggleMute(),
     toggleHaptics: () => game.toggleHaptics(),

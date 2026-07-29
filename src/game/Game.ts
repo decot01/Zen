@@ -17,6 +17,7 @@ import { ParticleSystem } from './Particles'
 import { Player } from './Player'
 import { Renderer } from './Renderer'
 import { Spawner } from './Spawner'
+import { getChromeInsets, isTelegramMiniApp } from '@/lib/telegram'
 import { loadSettings, updateSettings } from '@/utils/storage'
 import { randomRange } from '@/utils/random'
 
@@ -404,10 +405,12 @@ export class Game {
       this.height,
     )
 
+    const chromeTop = isTelegramMiniApp() ? getChromeInsets().top : 0
+    const topInset = Math.max(SPAWN.topInset, chromeTop + 72)
     const orbBounds = {
       minX: SPAWN.padding,
       maxX: this.width - SPAWN.padding,
-      minY: SPAWN.padding + SPAWN.topInset,
+      minY: SPAWN.padding + topInset,
       maxY: this.height - SPAWN.padding - SPAWN.bottomInset,
     }
     for (const orb of this.orbs) {

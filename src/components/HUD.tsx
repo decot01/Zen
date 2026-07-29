@@ -57,7 +57,7 @@ export function HUD({ score, best, combo, elapsed }: HUDProps) {
   const showCombo = combo > 1
 
   return (
-    <div className="pointer-events-none absolute inset-x-0 top-0 z-20 px-4 pt-[max(0.875rem,var(--zen-safe-top))]">
+    <div className="pointer-events-none absolute inset-x-0 top-0 z-20 px-4 pt-[var(--zen-safe-top)]">
       <motion.div
         className="mx-auto max-w-md"
         initial={{ opacity: 0, y: -14 }}

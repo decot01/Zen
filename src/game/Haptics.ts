@@ -1,16 +1,16 @@
-import { getTelegramWebApp, telegramHaptic } from '@/lib/telegram'
+import { telegramHaptic } from '@/lib/telegram'
 
 /**
  * Prefer Telegram HapticFeedback inside Mini Apps;
- * fall back to the Vibration API on the open web.
+ * also try Vibration API — TG often exposes HF but it no-ops on some clients.
  */
 export type HapticKind = 'collect' | 'combo' | 'death' | 'ui'
 
 const PATTERNS: Record<HapticKind, number | number[]> = {
-  collect: 8,
-  combo: [10, 24, 14],
-  death: [28, 40, 48],
-  ui: 6,
+  collect: 12,
+  combo: [12, 30, 18],
+  death: [30, 40, 55],
+  ui: 8,
 }
 
 export class Haptics {
@@ -25,13 +25,18 @@ export class Haptics {
   }
 
   isSupported(): boolean {
-    if (getTelegramWebApp()?.HapticFeedback) return true
+    if (typeof window !== 'undefined' && window.Telegram?.WebApp?.HapticFeedback) {
+      return true
+    }
     return typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function'
   }
 
   pulse(kind: HapticKind): void {
     if (!this.enabled) return
-    if (telegramHaptic(kind)) return
+
+    telegramHaptic(kind)
+
+    // Don't early-return after TG — HF can "succeed" with zero vibration.
     if (typeof navigator === 'undefined' || typeof navigator.vibrate !== 'function') {
       return
     }
