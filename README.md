@@ -16,7 +16,9 @@ npm run build
 npm run preview
 ```
 
-Static output lands in `dist/`. Deploy that folder to GitHub Pages (`vite.config.ts` uses `base: './'`).
+Static output lands in `dist/`. Push to `main` deploys it via GitHub Actions (`vite.config.ts` uses `base: './'`).
+
+One-time setup: **Settings → Pages → Build and deployment → Source: GitHub Actions**.
 
 ## Play
 
