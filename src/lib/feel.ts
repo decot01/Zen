@@ -8,7 +8,7 @@ export type HapticKind = 'collect' | 'combo' | 'death' | 'ui' | 'tap'
 
 const PATTERNS: Record<HapticKind, number | number[]> = {
   collect: 5,
-  combo: [6, 18, 8],
+  combo: 7,
   death: [12, 22, 16],
   ui: 4,
   tap: 3,
@@ -48,7 +48,6 @@ function telegramPulse(kind: HapticKind): boolean {
         break
       case 'combo':
         hf.impactOccurred('light')
-        hf.notificationOccurred('success')
         break
       case 'death':
         hf.notificationOccurred('warning')
