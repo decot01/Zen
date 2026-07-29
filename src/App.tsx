@@ -83,9 +83,8 @@ export default function App() {
             transition={transitionSpring}
           >
             <Button
-              variant="secondary"
+              variant="glass"
               size="icon"
-              className="zen-btn--glass"
               onClick={pause}
               aria-label="Pause"
             >

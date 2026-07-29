@@ -22,6 +22,8 @@ const buttonVariants = cva('zen-btn', {
       outline: 'zen-btn--outline',
       ghost: 'zen-btn--ghost',
       destructive: 'zen-btn--destructive',
+      /** Same surface as HUD banner Card. */
+      glass: 'zen-btn--glass',
     },
     size: {
       default: 'zen-btn--md',
