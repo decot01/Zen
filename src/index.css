@@ -40,6 +40,8 @@ body,
 #root {
   width: 100%;
   height: 100%;
+  height: 100dvh;
+  height: var(--tg-viewport-stable-height, 100dvh);
   margin: 0;
   padding: 0;
   overflow: hidden;
@@ -51,6 +53,19 @@ body,
   -webkit-tap-highlight-color: transparent;
   touch-action: none;
   user-select: none;
+}
+
+:root {
+  --zen-safe-top: max(
+    env(safe-area-inset-top, 0px),
+    var(--tg-safe-area-inset-top, 0px),
+    var(--tg-content-safe-area-inset-top, 0px)
+  );
+  --zen-safe-bottom: max(
+    env(safe-area-inset-bottom, 0px),
+    var(--tg-safe-area-inset-bottom, 0px),
+    var(--tg-content-safe-area-inset-bottom, 0px)
+  );
 }
 
 body {

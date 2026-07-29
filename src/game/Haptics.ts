@@ -1,6 +1,8 @@
+import { getTelegramWebApp, telegramHaptic } from '@/lib/telegram'
+
 /**
- * Light mobile vibration via Vibration API.
- * No-ops on unsupported browsers / when disabled.
+ * Prefer Telegram HapticFeedback inside Mini Apps;
+ * fall back to the Vibration API on the open web.
  */
 export type HapticKind = 'collect' | 'combo' | 'death' | 'ui'
 
@@ -23,11 +25,16 @@ export class Haptics {
   }
 
   isSupported(): boolean {
+    if (getTelegramWebApp()?.HapticFeedback) return true
     return typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function'
   }
 
   pulse(kind: HapticKind): void {
-    if (!this.enabled || !this.isSupported()) return
+    if (!this.enabled) return
+    if (telegramHaptic(kind)) return
+    if (typeof navigator === 'undefined' || typeof navigator.vibrate !== 'function') {
+      return
+    }
     try {
       navigator.vibrate(PATTERNS[kind])
     } catch {

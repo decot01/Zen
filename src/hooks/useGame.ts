@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { Game, type GameSnapshot } from '@/game/Game'
+import { getTelegramWebApp } from '@/lib/telegram'
 
 const INITIAL: GameSnapshot = {
   phase: 'menu',
@@ -71,8 +72,19 @@ export function useGame() {
     const observer = new ResizeObserver(resize)
     observer.observe(container)
 
+    const wa = getTelegramWebApp()
+    const onViewport = () => resize()
+    wa?.onEvent?.('viewportChanged', onViewport)
+    wa?.onEvent?.('safeAreaChanged', onViewport)
+    wa?.onEvent?.('contentSafeAreaChanged', onViewport)
+    window.addEventListener('resize', resize)
+
     return () => {
       observer.disconnect()
+      window.removeEventListener('resize', resize)
+      wa?.offEvent?.('viewportChanged', onViewport)
+      wa?.offEvent?.('safeAreaChanged', onViewport)
+      wa?.offEvent?.('contentSafeAreaChanged', onViewport)
       game.stopLoop()
     }
   }, [game])

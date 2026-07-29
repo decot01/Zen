@@ -76,7 +76,7 @@ export default function App() {
         {showPause && (
           <motion.div
             key="pause-btn"
-            className="absolute inset-x-0 bottom-0 z-20 flex justify-center pb-[max(1.25rem,env(safe-area-inset-bottom))]"
+            className="absolute inset-x-0 bottom-0 z-20 flex justify-center pb-[max(1.25rem,var(--zen-safe-bottom))]"
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 10, transition: transitionFast }}
