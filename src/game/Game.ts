@@ -91,6 +91,20 @@ export class Game {
     this.haptics.setEnabled(settings.haptics)
   }
 
+  /** Apply cloud-merged personal records (keeps the higher values). */
+  applySyncedRecords(bestScore: number, highCombo: number): void {
+    let changed = false
+    if (bestScore > this.bestScore) {
+      this.bestScore = bestScore
+      changed = true
+    }
+    if (highCombo > this.highCombo) {
+      this.highCombo = highCombo
+      changed = true
+    }
+    if (changed) this.emit(true)
+  }
+
   setListener(listener: SnapshotListener | null): void {
     this.listener = listener
     this.emit(true)

@@ -20,6 +20,22 @@ export interface TelegramSafeAreaInset {
   right: number
 }
 
+export interface TelegramCloudStorage {
+  setItem: (
+    key: string,
+    value: string,
+    callback?: (error: string | null, stored?: boolean) => void,
+  ) => void
+  getItem: (
+    key: string,
+    callback: (error: string | null, value?: string) => void,
+  ) => void
+  getItems: (
+    keys: string[],
+    callback: (error: string | null, values?: Record<string, string>) => void,
+  ) => void
+}
+
 export interface TelegramWebApp {
   initData: string
   ready: () => void
@@ -40,6 +56,7 @@ export interface TelegramWebApp {
   safeAreaInset?: TelegramSafeAreaInset
   contentSafeAreaInset?: TelegramSafeAreaInset
   HapticFeedback?: TelegramHapticFeedback
+  CloudStorage?: TelegramCloudStorage
   onEvent?: (eventType: string, callback: () => void) => void
   offEvent?: (eventType: string, callback: () => void) => void
 }

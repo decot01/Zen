@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { Game, type GameSnapshot } from '@/game/Game'
+import { syncRecordsWithCloud } from '@/lib/cloudSync'
 import {
   getTelegramWebApp,
   requestTelegramFullscreen,
@@ -56,6 +57,18 @@ export function useGame() {
       setSnapshot((prev) => (snapshotsEqual(prev, next) ? prev : next))
     })
     return () => game.setListener(null)
+  }, [game])
+
+  // Pull Telegram CloudStorage records and merge with local bests.
+  useEffect(() => {
+    let cancelled = false
+    void syncRecordsWithCloud().then((records) => {
+      if (cancelled) return
+      game.applySyncedRecords(records.bestScore, records.highCombo)
+    })
+    return () => {
+      cancelled = true
+    }
   }, [game])
 
   useEffect(() => {

@@ -1,3 +1,5 @@
+import { pushRecordsToCloud } from '@/lib/cloudSync'
+
 const STORAGE_KEY = 'zen.settings.v1'
 
 export interface StoredSettings {
@@ -45,5 +47,8 @@ export function saveSettings(settings: StoredSettings): void {
 export function updateSettings(partial: Partial<StoredSettings>): StoredSettings {
   const next = { ...loadSettings(), ...partial }
   saveSettings(next)
+  if (partial.bestScore !== undefined || partial.highCombo !== undefined) {
+    pushRecordsToCloud(next.bestScore, next.highCombo)
+  }
   return next
 }
