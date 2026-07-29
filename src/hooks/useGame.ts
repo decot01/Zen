@@ -60,14 +60,24 @@ export function useGame() {
   }, [game])
 
   // Pull Telegram CloudStorage records and merge with local bests.
+  // Retry once — CloudStorage is sometimes not ready on the first tick.
   useEffect(() => {
     let cancelled = false
-    void syncRecordsWithCloud().then((records) => {
+
+    const apply = async () => {
+      const records = await syncRecordsWithCloud()
       if (cancelled) return
       game.applySyncedRecords(records.bestScore, records.highCombo)
-    })
+    }
+
+    void apply()
+    const retry = window.setTimeout(() => {
+      void apply()
+    }, 800)
+
     return () => {
       cancelled = true
+      window.clearTimeout(retry)
     }
   }, [game])
 
