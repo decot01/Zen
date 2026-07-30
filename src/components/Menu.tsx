@@ -22,15 +22,14 @@ interface MenuProps {
   onToggleHaptics: () => void
 }
 
-function syncLabel(status: SyncStatus, best: number): string {
+function syncLabel(status: SyncStatus): string {
   switch (status.state) {
     case 'ok':
-      return `cloud ${Math.max(status.bestScore, best).toLocaleString()}`
+      return 'connected'
     case 'syncing':
-      // Never park on "sync…" — show the best we already know.
-      return best > 0 ? `cloud ${best.toLocaleString()}` : 'cloud…'
+      return 'connect…'
     case 'error':
-      return best > 0 ? `cloud ${best.toLocaleString()}` : 'cloud err'
+      return 'connect err'
     case 'off':
     default:
       return 'local'
@@ -118,7 +117,7 @@ export function Menu({
       <p className="pointer-events-none absolute inset-x-0 bottom-0 pb-[max(1rem,var(--zen-safe-bottom))] text-center text-[10px] tabular-nums tracking-[0.14em] text-muted-foreground/50">
         {version}
         <span className="mx-2 opacity-40">·</span>
-        {syncLabel(sync, best)}
+        {syncLabel(sync)}
       </p>
     </div>
   )
