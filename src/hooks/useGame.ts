@@ -70,11 +70,9 @@ export function useGame() {
     }
 
     void apply()
-    const retries = [400, 1200, 2500, 5000].map((ms) =>
-      window.setTimeout(() => {
-        void apply()
-      }, ms),
-    )
+    const retry = window.setTimeout(() => {
+      void apply()
+    }, 1500)
 
     const onVisible = () => {
       if (document.visibilityState === 'visible') void apply()
@@ -83,7 +81,7 @@ export function useGame() {
 
     return () => {
       cancelled = true
-      retries.forEach((id) => window.clearTimeout(id))
+      window.clearTimeout(retry)
       document.removeEventListener('visibilitychange', onVisible)
     }
   }, [game])
