@@ -1,9 +1,15 @@
+import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { Vibrate, VibrateOff, Volume2, VolumeX } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { IconToggle } from '@/components/IconToggle'
 import { IntelGlow } from '@/components/IntelGlow'
+import {
+  getSyncStatus,
+  subscribeSyncStatus,
+  type SyncStatus,
+} from '@/lib/cloudSync'
 import { staggerContainer, staggerItem } from '@/lib/motion'
 import { version } from '../../package.json'
 
@@ -16,6 +22,20 @@ interface MenuProps {
   onToggleHaptics: () => void
 }
 
+function syncLabel(status: SyncStatus): string {
+  switch (status.state) {
+    case 'syncing':
+      return 'sync…'
+    case 'ok':
+      return `cloud ${status.bestScore.toLocaleString()}`
+    case 'error':
+      return 'cloud err'
+    case 'off':
+    default:
+      return 'local only'
+  }
+}
+
 export function Menu({
   best,
   muted,
@@ -24,6 +44,9 @@ export function Menu({
   onToggleMute,
   onToggleHaptics,
 }: MenuProps) {
+  const [sync, setSync] = useState<SyncStatus>(() => getSyncStatus())
+  useEffect(() => subscribeSyncStatus(setSync), [])
+
   return (
     <div className="absolute inset-0 z-30 flex flex-col items-center justify-center px-6">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(255,255,255,0.04),transparent_55%)]" />
@@ -91,8 +114,10 @@ export function Menu({
         </motion.div>
       </motion.div>
 
-      <p className="pointer-events-none absolute inset-x-0 bottom-0 pb-[max(1rem,var(--zen-safe-bottom))] text-center text-xs tabular-nums tracking-[0.14em] text-muted-foreground/50">
+      <p className="pointer-events-none absolute inset-x-0 bottom-0 pb-[max(1rem,var(--zen-safe-bottom))] text-center text-[10px] tabular-nums tracking-[0.14em] text-muted-foreground/50">
         {version}
+        <span className="mx-2 opacity-40">·</span>
+        {syncLabel(sync)}
       </p>
     </div>
   )

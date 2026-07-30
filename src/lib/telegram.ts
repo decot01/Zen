@@ -65,6 +65,11 @@ export interface TelegramWebApp {
   contentSafeAreaInset?: TelegramSafeAreaInset
   HapticFeedback?: TelegramHapticFeedback
   CloudStorage?: TelegramCloudStorage
+  invokeCustomMethod?: (
+    method: string,
+    params: Record<string, unknown>,
+    callback?: (error: string | null, result?: unknown) => void,
+  ) => void
   onEvent?: (eventType: string, callback: () => void) => void
   offEvent?: (eventType: string, callback: () => void) => void
 }

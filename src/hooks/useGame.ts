@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { Game, type GameSnapshot } from '@/game/Game'
-import { syncRecordsWithCloud } from '@/lib/cloudSync'
+import { flushRecordsToCloud, syncRecordsWithCloud } from '@/lib/cloudSync'
 import {
   getTelegramWebApp,
   requestTelegramFullscreen,
@@ -70,7 +70,7 @@ export function useGame() {
     }
 
     void apply()
-    const retries = [500, 1500, 3000].map((ms) =>
+    const retries = [400, 1200, 2500, 5000].map((ms) =>
       window.setTimeout(() => {
         void apply()
       }, ms),
@@ -87,6 +87,23 @@ export function useGame() {
       document.removeEventListener('visibilitychange', onVisible)
     }
   }, [game])
+
+  // Re-flush after a run so a new PC best is not lost if the first write raced.
+  useEffect(() => {
+    if (snapshot.phase !== 'gameover') return
+    let cancelled = false
+    void (async () => {
+      const ok = await flushRecordsToCloud(snapshot.bestScore, snapshot.highCombo)
+      if (cancelled || ok) return
+      const records = await syncRecordsWithCloud()
+      if (!cancelled) {
+        game.applySyncedRecords(records.bestScore, records.highCombo)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [game, snapshot.phase, snapshot.bestScore, snapshot.highCombo])
 
   useEffect(() => {
     const canvas = canvasRef.current

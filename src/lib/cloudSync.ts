@@ -2,17 +2,46 @@ import { getTelegramWebApp } from '@/lib/telegram'
 import { loadSettings, saveSettings, type StoredSettings } from '@/utils/storage'
 
 /** CloudStorage keys: only [A-Za-z0-9_-], 1–128 chars. */
+const KEY_BEST = 'zen_b'
+const KEY_COMBO = 'zen_c'
 const KEY_RECORDS = 'zen_records'
-/** Legacy keys from earlier sync attempts. */
 const LEGACY_BEST = 'zen_bestScore'
 const LEGACY_COMBO = 'zen_highCombo'
+
+const ALL_KEYS = [KEY_BEST, KEY_COMBO, KEY_RECORDS, LEGACY_BEST, LEGACY_COMBO]
 
 type CloudRecords = {
   bestScore: number
   highCombo: number
 }
 
-/** Serialize all cloud ops — concurrent setItem races overwrite higher scores. */
+export type SyncStatus =
+  | { state: 'off' }
+  | { state: 'syncing' }
+  | { state: 'ok'; bestScore: number; highCombo: number }
+  | { state: 'error'; message: string }
+
+let lastStatus: SyncStatus = { state: 'off' }
+const statusListeners = new Set<(s: SyncStatus) => void>()
+
+export function getSyncStatus(): SyncStatus {
+  return lastStatus
+}
+
+export function subscribeSyncStatus(listener: (s: SyncStatus) => void): () => void {
+  statusListeners.add(listener)
+  listener(lastStatus)
+  return () => {
+    statusListeners.delete(listener)
+  }
+}
+
+function setStatus(next: SyncStatus): void {
+  lastStatus = next
+  statusListeners.forEach((fn) => fn(next))
+}
+
+/** Serialize cloud ops — concurrent writes race and drop higher scores. */
 let cloudQueue: Promise<unknown> = Promise.resolve()
 
 function enqueueCloud<T>(task: () => Promise<T>): Promise<T> {
@@ -24,37 +53,58 @@ function enqueueCloud<T>(task: () => Promise<T>): Promise<T> {
   return next
 }
 
-function getCloud() {
-  const wa = getTelegramWebApp()
-  if (!wa?.CloudStorage) return null
+function getWebApp() {
+  return getTelegramWebApp()
+}
+
+function isTelegramSession(): boolean {
+  const wa = getWebApp()
+  return Boolean(wa && (wa.initData || wa.initDataUnsafe?.user?.id))
+}
+
+function cloudSupported(): boolean {
+  const wa = getWebApp()
+  if (!wa || !isTelegramSession()) return false
   if (typeof wa.isVersionAtLeast === 'function' && !wa.isVersionAtLeast('6.9')) {
-    return null
+    return false
   }
-  const inTelegram = Boolean(wa.initData || wa.initDataUnsafe?.user?.id)
-  if (!inTelegram) return null
-  return wa.CloudStorage
+  return Boolean(wa.CloudStorage || wa.invokeCustomMethod)
 }
 
 function asScore(value: unknown, min: number): number | null {
+  if (value == null || value === '') return null
   const n = typeof value === 'number' ? value : Number(value)
   if (!Number.isFinite(n)) return null
   return Math.max(min, Math.floor(n))
 }
 
-function parseRecords(raw: unknown): CloudRecords | null {
-  if (raw == null || raw === '') return null
-
-  let data: unknown = raw
-  if (typeof raw === 'string') {
+function parseMaybeJson(raw: unknown): unknown {
+  let cur: unknown = raw
+  // Native clients often return JSON text; sometimes double-encoded.
+  for (let i = 0; i < 2; i++) {
+    if (typeof cur !== 'string') break
+    const trimmed = cur.trim()
+    if (!trimmed) return ''
     try {
-      data = JSON.parse(raw)
+      cur = JSON.parse(trimmed)
     } catch {
-      const n = asScore(raw, 0)
-      return n == null ? null : { bestScore: n, highCombo: 1 }
+      return cur
     }
   }
+  return cur
+}
 
-  if (!data || typeof data !== 'object') return null
+function parseRecordsBlob(raw: unknown): CloudRecords | null {
+  const data = parseMaybeJson(raw)
+  if (data == null || data === '') return null
+  if (typeof data === 'number') {
+    return { bestScore: Math.max(0, Math.floor(data)), highCombo: 1 }
+  }
+  if (typeof data === 'string') {
+    const n = asScore(data, 0)
+    return n == null ? null : { bestScore: n, highCombo: 1 }
+  }
+  if (typeof data !== 'object') return null
   const v = data as Record<string, unknown>
   const bestScore = asScore(v.bestScore ?? v.b, 0)
   const highCombo = asScore(v.highCombo ?? v.c, 1)
@@ -65,79 +115,131 @@ function parseRecords(raw: unknown): CloudRecords | null {
   }
 }
 
-function normalizeGetResult(res: unknown): unknown {
-  if (typeof res !== 'string') return res
-  try {
-    return JSON.parse(res)
-  } catch {
-    return res
-  }
+function isErrorValue(err: unknown): boolean {
+  if (err == null || err === false || err === '') return false
+  if (typeof err === 'string' && err.toLowerCase() === 'null') return false
+  return true
 }
 
 function cloudCall<T>(
   run: (callback: (err: unknown, res?: T) => void) => void,
-): Promise<{ ok: boolean; error?: unknown; result?: T }> {
+): Promise<{ ok: boolean; error?: string; result?: T }> {
   return new Promise((resolve) => {
     const timer = window.setTimeout(() => {
       resolve({ ok: false, error: 'timeout' })
-    }, 5000)
+    }, 12000)
     try {
       run((err, res) => {
         window.clearTimeout(timer)
-        if (err) resolve({ ok: false, error: err })
-        else resolve({ ok: true, result: res })
+        if (isErrorValue(err)) {
+          resolve({ ok: false, error: String(err) })
+        } else {
+          resolve({ ok: true, result: parseMaybeJson(res) as T })
+        }
       })
     } catch (error) {
       window.clearTimeout(timer)
-      resolve({ ok: false, error })
+      resolve({ ok: false, error: error instanceof Error ? error.message : String(error) })
     }
   })
 }
 
-async function readCloudRecords(): Promise<CloudRecords | null> {
-  const cloud = getCloud()
-  if (!cloud) return null
+async function invokeStorage<T>(
+  method: string,
+  params: Record<string, unknown>,
+): Promise<{ ok: boolean; error?: string; result?: T }> {
+  const wa = getWebApp()
+  if (!wa) return { ok: false, error: 'no-webapp' }
 
-  const res = await cloudCall<unknown>((cb) => {
-    cloud.getItems([KEY_RECORDS, LEGACY_BEST, LEGACY_COMBO], cb)
-  })
-  if (!res.ok) return null
-
-  let values = normalizeGetResult(res.result)
-  if (typeof values === 'string') {
-    try {
-      values = JSON.parse(values)
-    } catch {
-      return null
-    }
+  if (typeof wa.invokeCustomMethod === 'function') {
+    return cloudCall<T>((cb) => {
+      wa.invokeCustomMethod!(method, params, cb)
+    })
   }
-  if (!values || typeof values !== 'object') return null
 
-  const map = values as Record<string, unknown>
-  const fromMain = parseRecords(normalizeGetResult(map[KEY_RECORDS]))
-  const legacyBest = asScore(normalizeGetResult(map[LEGACY_BEST]), 0)
-  const legacyCombo = asScore(normalizeGetResult(map[LEGACY_COMBO]), 1)
+  const cloud = wa.CloudStorage
+  if (!cloud) return { ok: false, error: 'no-cloud' }
 
-  const bestScore = Math.max(fromMain?.bestScore ?? 0, legacyBest ?? 0)
-  const highCombo = Math.max(fromMain?.highCombo ?? 1, legacyCombo ?? 1)
-
-  if (!fromMain && legacyBest == null && legacyCombo == null) return null
-  return { bestScore, highCombo }
+  if (method === 'saveStorageValue') {
+    return cloudCall<T>((cb) => {
+      cloud.setItem(String(params.key), String(params.value), cb)
+    })
+  }
+  if (method === 'getStorageValues') {
+    return cloudCall<T>((cb) => {
+      cloud.getItems(params.keys as string[], cb)
+    })
+  }
+  return { ok: false, error: `unsupported:${method}` }
 }
 
-async function writeCloudRecords(records: CloudRecords): Promise<boolean> {
-  const cloud = getCloud()
-  if (!cloud) return false
+async function readCloudRecords(): Promise<
+  { ok: true; records: CloudRecords | null } | { ok: false; error: string }
+> {
+  const res = await invokeStorage<unknown>('getStorageValues', { keys: ALL_KEYS })
+  if (!res.ok) return { ok: false, error: res.error ?? 'read-failed' }
 
-  const payload = JSON.stringify({
-    bestScore: Math.max(0, Math.floor(records.bestScore)),
-    highCombo: Math.max(1, Math.floor(records.highCombo)),
-  })
+  let map = res.result
+  if (typeof map === 'string') map = parseMaybeJson(map)
+  if (!map || typeof map !== 'object') {
+    return { ok: true, records: null }
+  }
 
-  const saved = await cloudCall<boolean>((cb) => {
-    cloud.setItem(KEY_RECORDS, payload, cb)
-  })
-  return saved.ok && saved.result !== false
+  const values = map as Record<string, unknown>
+  const fromBlob = parseRecordsBlob(values[KEY_RECORDS])
+  const bestScore = Math.max(
+    fromBlob?.bestScore ?? 0,
+    asScore(parseMaybeJson(values[KEY_BEST]), 0) ?? 0,
+    asScore(parseMaybeJson(values[LEGACY_BEST]), 0) ?? 0,
+  )
+  const highCombo = Math.max(
+    fromBlob?.highCombo ?? 1,
+    asScore(parseMaybeJson(values[KEY_COMBO]), 1) ?? 1,
+    asScore(parseMaybeJson(values[LEGACY_COMBO]), 1) ?? 1,
+  )
+
+  const any =
+    fromBlob != null ||
+    values[KEY_BEST] != null && values[KEY_BEST] !== '' ||
+    values[LEGACY_BEST] != null && values[LEGACY_BEST] !== '' ||
+    values[KEY_COMBO] != null && values[KEY_COMBO] !== '' ||
+    values[LEGACY_COMBO] != null && values[LEGACY_COMBO] !== ''
+
+  if (!any) return { ok: true, records: null }
+  return { ok: true, records: { bestScore, highCombo } }
+}
+
+async function writeCloudRecords(records: CloudRecords): Promise<
+  { ok: true } | { ok: false; error: string }
+> {
+  const best = Math.max(0, Math.floor(records.bestScore))
+  const combo = Math.max(1, Math.floor(records.highCombo))
+  const blob = JSON.stringify({ bestScore: best, highCombo: combo })
+
+  // Plain numeric keys first — simplest path for picky clients.
+  // Sequential: Telegram's custom-method bridge is not concurrency-safe.
+  for (const [key, value] of [
+    [KEY_BEST, String(best)],
+    [KEY_COMBO, String(combo)],
+    [KEY_RECORDS, blob],
+  ] as const) {
+    const written = await invokeStorage('saveStorageValue', { key, value })
+    if (!written.ok) return { ok: false, error: written.error ?? 'write-failed' }
+  }
+
+  // Verify at least the plain best key stuck.
+  const check = await invokeStorage<unknown>('getStorageValues', { keys: [KEY_BEST] })
+  if (!check.ok) return { ok: false, error: check.error ?? 'verify-failed' }
+  let map = check.result
+  if (typeof map === 'string') map = parseMaybeJson(map)
+  const got =
+    map && typeof map === 'object'
+      ? asScore(parseMaybeJson((map as Record<string, unknown>)[KEY_BEST]), 0)
+      : null
+  if (got == null || got < best) {
+    return { ok: false, error: `verify-mismatch:${got}` }
+  }
+  return { ok: true }
 }
 
 function mergeRecords(
@@ -150,47 +252,112 @@ function mergeRecords(
   }
 }
 
-/**
- * Push local personal records to Telegram CloudStorage.
- * Always read→merge→write so a lower local score never clobbers cloud.
- */
+/** Push local personal records (read→merge→write). */
 export function pushRecordsToCloud(bestScore: number, highCombo: number): void {
-  void enqueueCloud(async () => {
+  void flushRecordsToCloud(bestScore, highCombo)
+}
+
+/** Awaitable push — use after a new best so the write finishes before close. */
+export async function flushRecordsToCloud(
+  bestScore: number,
+  highCombo: number,
+): Promise<boolean> {
+  if (!cloudSupported()) {
+    setStatus({ state: 'off' })
+    return false
+  }
+
+  return enqueueCloud(async () => {
+    setStatus({ state: 'syncing' })
     const remote = await readCloudRecords()
-    const merged = mergeRecords({ bestScore, highCombo }, remote)
-    await writeCloudRecords(merged)
+    if (!remote.ok) {
+      // Still try writing local — better than losing a new PC record.
+      const written = await writeCloudRecords({ bestScore, highCombo })
+      if (!written.ok) {
+        setStatus({ state: 'error', message: remote.error })
+        return false
+      }
+      setStatus({ state: 'ok', bestScore, highCombo })
+      return true
+    }
+
+    const merged = mergeRecords({ bestScore, highCombo }, remote.records)
+    const written = await writeCloudRecords(merged)
+    if (!written.ok) {
+      setStatus({ state: 'error', message: written.error })
+      return false
+    }
+    setStatus({ state: 'ok', bestScore: merged.bestScore, highCombo: merged.highCombo })
+    return true
   })
 }
 
 /**
  * Pull cloud, merge with local (max wins), save both sides.
- * Never write local before reading — that overwrote higher cloud scores.
+ * Read always happens before write.
  */
 export async function syncRecordsWithCloud(): Promise<
   Pick<StoredSettings, 'bestScore' | 'highCombo'> & { synced: boolean }
 > {
+  const local = loadSettings()
+  if (!cloudSupported()) {
+    setStatus({ state: 'off' })
+    return { bestScore: local.bestScore, highCombo: local.highCombo, synced: false }
+  }
+
   return enqueueCloud(async () => {
-    const local = loadSettings()
-    const cloud = getCloud()
-    if (!cloud) {
-      return { bestScore: local.bestScore, highCombo: local.highCombo, synced: false }
-    }
+    setStatus({ state: 'syncing' })
+    const freshLocal = loadSettings()
 
     const remote = await readCloudRecords()
+    if (!remote.ok) {
+      const written = await writeCloudRecords({
+        bestScore: freshLocal.bestScore,
+        highCombo: freshLocal.highCombo,
+      })
+      if (!written.ok) {
+        setStatus({ state: 'error', message: remote.error })
+        return {
+          bestScore: freshLocal.bestScore,
+          highCombo: freshLocal.highCombo,
+          synced: false,
+        }
+      }
+      setStatus({
+        state: 'ok',
+        bestScore: freshLocal.bestScore,
+        highCombo: freshLocal.highCombo,
+      })
+      return {
+        bestScore: freshLocal.bestScore,
+        highCombo: freshLocal.highCombo,
+        synced: true,
+      }
+    }
+
     const merged = mergeRecords(
-      { bestScore: local.bestScore, highCombo: local.highCombo },
-      remote,
+      { bestScore: freshLocal.bestScore, highCombo: freshLocal.highCombo },
+      remote.records,
     )
 
     if (
-      merged.bestScore !== local.bestScore ||
-      merged.highCombo !== local.highCombo
+      merged.bestScore !== freshLocal.bestScore ||
+      merged.highCombo !== freshLocal.highCombo
     ) {
-      saveSettings({ ...local, ...merged })
+      saveSettings({ ...freshLocal, ...merged })
     }
 
-    // Still write when local is ahead or equal — seeds empty cloud with old records.
-    const synced = await writeCloudRecords(merged)
-    return { ...merged, synced }
+    const written = await writeCloudRecords(merged)
+    if (!written.ok) {
+      setStatus({ state: 'error', message: written.error })
+      return { ...merged, synced: false }
+    }
+
+    setStatus({
+      state: 'ok',
+      bestScore: merged.bestScore,
+      highCombo: merged.highCombo,
+    })
+    return { ...merged, synced: true }
   })
 }
