@@ -74,18 +74,18 @@ export const COMBO = {
   respawnDistancePerLevel: 18,
 } as const
 
-/** Rare high-value orb — late game, flees, short lifetime. */
+/** Rare high-value orb — mid game, flees, short lifetime. */
 export const PRIZE_ORB = {
   radius: 8,
   hitRadius: 11,
   score: 100,
-  lifetime: 6,
-  /** Appear starting from difficulty stage 3 (after ~30s). */
-  minDifficultyTicks: 2,
-  firstDelayMin: 8,
-  firstDelayMax: 16,
-  respawnMin: 24,
-  respawnMax: 42,
+  lifetime: 5,
+  /** Appear starting from difficulty stage 2 (after ~15s). */
+  minDifficultyTicks: 1,
+  firstDelayMin: 4,
+  firstDelayMax: 9,
+  respawnMin: 10,
+  respawnMax: 18,
   fleeSpeed: 235,
   fleeRange: 210,
   /** Extra clearance around enemies while steering. */

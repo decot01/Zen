@@ -459,16 +459,19 @@ export class Game {
     if (this.prizeOrbTimer > 0) return
 
     this.spawnPrizeOrb()
+    // Whether spawn landed or not, wait for the next queue slot.
     this.prizeOrbTimer = randomRange(PRIZE_ORB.respawnMin, PRIZE_ORB.respawnMax)
   }
 
-  private spawnPrizeOrb(): void {
-    if (this.orbs.some((o) => o.alive && o.kind === 'prize')) return
-    const pos = this.findOrbSpawn()
-    if (!pos) return
+  private spawnPrizeOrb(): boolean {
+    if (this.orbs.some((o) => o.alive && o.kind === 'prize')) return false
+    // Prefer orb placement; fall back to looser spawn so late-game density can't starve prizes.
+    const pos = this.findOrbSpawn() ?? this.findSpawn(SPAWN.minDistanceFromPlayer * 0.35)
+    if (!pos) return false
     const dead = this.orbs.find((o) => !o.alive)
     if (dead) dead.respawn(pos.x, pos.y, 'prize')
     else this.orbs.push(new Orb(pos.x, pos.y, 'prize'))
+    return true
   }
 
   /** Never leave the board without collectibles (softlock after clearing all). */

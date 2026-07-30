@@ -116,7 +116,6 @@ export class Orb {
       const dir = normalize(dx, dy)
       const urgency = 1 - clamp(dist / PRIZE_ORB.fleeRange, 0, 1)
       const urgencySq = urgency * urgency
-      // Snappier flee, still catchable if you cut the path.
       const accel = PRIZE_ORB.fleeSpeed * (1.2 + urgency * 1.2 + urgencySq * 1.95)
       fleeX = dir.x * accel
       fleeY = dir.y * accel
@@ -126,13 +125,11 @@ export class Orb {
       fleeY += dir.x * weave
     }
 
-    // Steer around hazards: look farther, prefer arcing past, hard-push if overlapping.
     let avoidX = 0
     let avoidY = 0
     let nearestGap = Number.POSITIVE_INFINITY
     for (const hazard of hazards) {
       const softClear = this.radius + hazard.radius + PRIZE_ORB.hazardPadding
-      const hardClear = this.radius + hazard.radius + 10
       const hx = this.baseX - hazard.x
       const hy = this.baseY - hazard.y
       const hDist = length(hx, hy)
@@ -142,14 +139,12 @@ export class Orb {
       const away = normalize(hx, hy)
       let sideX = -away.y
       let sideY = away.x
-      // Pick the lateral side that still roughly continues the flee.
       if (fleeX !== 0 || fleeY !== 0) {
         if (sideX * fleeX + sideY * fleeY < 0) {
           sideX = -sideX
           sideY = -sideY
         }
       } else {
-        // Idle: peel toward open space relative to player.
         const toPlayerX = player.x - this.baseX
         const toPlayerY = player.y - this.baseY
         if (sideX * toPlayerX + sideY * toPlayerY > 0) {
@@ -159,22 +154,21 @@ export class Orb {
       }
 
       const closeness = 1 - clamp(hDist / softClear, 0, 1)
-      const weight = closeness * closeness * (0.85 + closeness)
-      // Stronger outward when nearly touching; otherwise slide along the side.
-      const outward = hDist < hardClear ? 1.35 : 0.35
-      const lateral = hDist < hardClear ? 0.55 : 1.15
+      const weight = closeness * closeness * (1 + closeness)
+      const hardClear = this.radius + hazard.radius + 14
+      const outward = hDist < hardClear ? 1.6 : 0.4
+      const lateral = hDist < hardClear ? 0.7 : 1.25
       avoidX += (away.x * outward + sideX * lateral) * weight
       avoidY += (away.y * outward + sideY * lateral) * weight
     }
 
     const avoiding = avoidX !== 0 || avoidY !== 0
-    // Near obstacles, ease flee a bit so steering can still curve around.
-    const fleeScale = avoiding ? (nearestGap < 22 ? 0.32 : 0.58) : 1
+    const fleeScale = avoiding ? (nearestGap < 22 ? 0.28 : 0.5) : 1
 
     if (avoiding) {
       const avoidDir = normalize(avoidX, avoidY)
       const avoidAccel =
-        PRIZE_ORB.fleeSpeed * (nearestGap < 22 ? 3.6 : 2.75)
+        PRIZE_ORB.fleeSpeed * (nearestGap < 22 ? 4.2 : 3.1)
       this.fleeVx += (fleeX * fleeScale + avoidDir.x * avoidAccel) * dt
       this.fleeVy += (fleeY * fleeScale + avoidDir.y * avoidAccel) * dt
     } else {
@@ -183,23 +177,29 @@ export class Orb {
     }
 
     const threatened = dist < PRIZE_ORB.fleeRange * 0.72
-    const damp = Math.exp(-(avoiding ? 0.5 : threatened ? 0.72 : 1.85) * dt)
+    const damp = Math.exp(-(avoiding ? 0.45 : threatened ? 0.72 : 1.85) * dt)
     this.fleeVx *= damp
     this.fleeVy *= damp
 
     const speed = length(this.fleeVx, this.fleeVy)
     const maxSpeed =
       PRIZE_ORB.fleeSpeed *
-      (avoiding ? 1.6 : threatened ? 1.52 : 1.22)
+      (avoiding ? 1.55 : threatened ? 1.52 : 1.22)
     if (speed > maxSpeed) {
       this.fleeVx = (this.fleeVx / speed) * maxSpeed
       this.fleeVy = (this.fleeVy / speed) * maxSpeed
     }
 
-    this.baseX += this.fleeVx * dt
-    this.baseY += this.fleeVy * dt
+    // Substep + hard collision so high flee speed can't tunnel through enemies.
+    const stepSpeed = length(this.fleeVx, this.fleeVy)
+    const steps = Math.max(1, Math.min(6, Math.ceil((stepSpeed * dt) / 6)))
+    const stepDt = dt / steps
+    for (let i = 0; i < steps; i++) {
+      this.baseX += this.fleeVx * stepDt
+      this.baseY += this.fleeVy * stepDt
+      this.resolveHazardCollisions(hazards)
+    }
 
-    // Soft wall cushion — turn along the edge instead of pinning into a corner.
     const wallPad = 36
     if (this.baseX < bounds.minX + wallPad) this.fleeVx += PRIZE_ORB.fleeSpeed * 1.8 * dt
     if (this.baseX > bounds.maxX - wallPad) this.fleeVx -= PRIZE_ORB.fleeSpeed * 1.8 * dt
@@ -211,6 +211,55 @@ export class Orb {
 
     if (this.baseX <= bounds.minX || this.baseX >= bounds.maxX) this.fleeVx *= -0.55
     if (this.baseY <= bounds.minY || this.baseY >= bounds.maxY) this.fleeVy *= -0.55
+
+    this.resolveHazardCollisions(hazards)
+  }
+
+  /** Hard circle push — soft steering alone tunnels at flee speed. */
+  private resolveHazardCollisions(
+    hazards: readonly { x: number; y: number; radius: number }[],
+  ): void {
+    for (let pass = 0; pass < 3; pass++) {
+      let hit = false
+      for (const hazard of hazards) {
+        const minDist = this.radius + hazard.radius + 3
+        let hx = this.baseX - hazard.x
+        let hy = this.baseY - hazard.y
+        let hDist = length(hx, hy)
+
+        if (hDist < 0.001) {
+          const fallback = normalize(this.fleeVx || 1, this.fleeVy)
+          hx = fallback.x
+          hy = fallback.y
+          hDist = 1
+        }
+
+        if (hDist >= minDist) continue
+        hit = true
+
+        const nx = hx / hDist
+        const ny = hy / hDist
+        this.baseX = hazard.x + nx * minDist
+        this.baseY = hazard.y + ny * minDist
+
+        // Kill inward velocity so it slides around instead of re-entering.
+        const into = this.fleeVx * nx + this.fleeVy * ny
+        if (into < 0) {
+          this.fleeVx -= into * nx
+          this.fleeVy -= into * ny
+        }
+
+        let tx = -ny
+        let ty = nx
+        if (tx * this.fleeVx + ty * this.fleeVy < 0) {
+          tx = -tx
+          ty = -ty
+        }
+        this.fleeVx += tx * 55
+        this.fleeVy += ty * 55
+      }
+      if (!hit) break
+    }
   }
 
   get scale(): number {
@@ -222,7 +271,6 @@ export class Orb {
   get alpha(): number {
     let a = clamp(this.spawnProgress / 0.35, 0, 1)
     if (this.kind === 'prize' && this.life < 2.2) {
-      // Blink when about to despawn.
       a *= 0.35 + 0.65 * Math.abs(Math.sin(this.time * 9))
     }
     return a
