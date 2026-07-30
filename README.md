@@ -1,43 +1,21 @@
+<p align="center">
+  <img src="public/Banner.png" alt="Zen" width="720" />
+</p>
+
 # Zen
 
-Minimalistic one-finger arcade for mobile web, Telegram Mini App, and GitHub Pages.
+Минималистичный one-finger arcade для мобильного веба, Telegram Mini App и GitHub Pages.
 
-## Run
+Держи палец — шар тянется к нему. Отпусти — инерция. Собирай белые орбы, уворачивайся от красных врагов. Чем дольше живёшь, тем плотнее арена и жёстче timed-events.
 
-```bash
-npm install
-npm run dev
-```
+## Геймплей
 
-## Build
+- **Управление** — один палец: hold = притяжение, release = свободный полёт
+- **Очки** — белые орбы; комбо за быстрые сборы подряд
+- **Опасность** — красные враги; касание = конец раунда
+- **Сложность** — каждые ~15 с растёт число врагов и темп
+- **События** — случайные режимы арены (стены энергии, снайпер, радар, crossfire, bullet hell и др.), открываются по стадиям
 
-```bash
-npm run build
-npm run preview
-```
+Чистый чёрный экран, без UI-шума — только шар, орбы и угрозы.
 
-Static output lands in `dist/`. Push to `main` deploys it via GitHub Actions (`vite.config.ts` uses `base: './'`).
-
-One-time setup: **Settings → Pages → Build and deployment → Source: GitHub Actions**.
-
-Live URL: https://decot01.github.io/Zen/
-
-## Telegram Mini App
-
-Обычная ссылка в чате открывает урезанный браузер — так игра работает плохо. Нужен **Mini App** через бота.
-
-1. Открой [@BotFather](https://t.me/BotFather) → `/newbot` (или возьми существующего бота).
-2. `/newapp` → выбери бота → имя/описание → загрузи иконку (опционально).
-3. **Web App URL:** `https://decot01.github.io/Zen/`
-4. (Опционально) `/setmenubutton` → тот же URL, чтобы кнопка «Play» была внизу чата с ботом.
-5. Открой бота в Telegram и запусти Mini App оттуда — не через браузер.
-
-Внутри Mini App игра сама:
-- разворачивается на весь экран;
-- отключает вертикальный свайп «свернуть/закрыть» (чтобы не мешал hold);
-- использует Telegram haptic feedback;
-- учитывает safe-area Telegram.
-
-## Play
-
-Hold to attract the orb. Release to coast with inertia. Collect white orbs, avoid red ones.
+**Играть:** [decot01.github.io/Zen](https://decot01.github.io/Zen/)

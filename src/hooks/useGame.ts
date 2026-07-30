@@ -19,6 +19,7 @@ const INITIAL: GameSnapshot = {
   haptics: true,
   isNewBest: false,
   dying: false,
+  activeEvent: null,
 }
 
 function snapshotsEqual(a: GameSnapshot, b: GameSnapshot): boolean {
@@ -33,7 +34,8 @@ function snapshotsEqual(a: GameSnapshot, b: GameSnapshot): boolean {
     a.muted === b.muted &&
     a.haptics === b.haptics &&
     a.isNewBest === b.isNewBest &&
-    a.dying === b.dying
+    a.dying === b.dying &&
+    a.activeEvent === b.activeEvent
   )
 }
 

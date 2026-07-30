@@ -20,9 +20,16 @@ export class Player {
   comboGlowTarget = 0
   /** Smoothed value used by the renderer. */
   comboGlow = 0
+  /** 1→0 mute on speed stretch after a hard wall kick. */
+  private stretchMute = 0
+  /** Event-driven damp on speed stretch (1 = normal). */
+  stretchScale = 1
+  /** When true, physics step skips attraction / walls. */
+  motionLocked = false
 
   private trail: TrailPoint[] = []
   private trailAccum = 0
+  private impactCooldown = 0
 
   reset(width: number, height: number): void {
     this.x = width * 0.5
@@ -34,12 +41,24 @@ export class Player {
     this.maxSpeed = PLAYER.maxSpeed
     this.comboGlowTarget = 0
     this.comboGlow = 0
+    this.stretchMute = 0
+    this.stretchScale = 1
+    this.motionLocked = false
+    this.impactCooldown = 0
     this.clearTrail()
   }
 
   clearTrail(): void {
     this.trail = []
     this.trailAccum = 0
+  }
+
+  /** Gate wall-hit FX / stretch mute — once per contact. */
+  noteWallImpact(): boolean {
+    if (this.impactCooldown > 0) return false
+    this.impactCooldown = PLAYER.wallImpactCooldown
+    this.stretchMute = 1
+    return true
   }
 
   step(
@@ -49,6 +68,21 @@ export class Player {
     height: number,
   ): void {
     this.time += dt
+
+    if (this.motionLocked) {
+      this.vx = 0
+      this.vy = 0
+      if (this.stretchMute > 0) {
+        this.stretchMute = Math.max(
+          0,
+          this.stretchMute - dt / PLAYER.bounceStretchMuteDuration,
+        )
+      }
+      if (this.impactCooldown > 0) {
+        this.impactCooldown = Math.max(0, this.impactCooldown - dt)
+      }
+      return
+    }
 
     const velocity = { x: this.vx, y: this.vy }
     const position = { x: this.x, y: this.y }
@@ -77,6 +111,16 @@ export class Player {
       this.comboGlow = this.comboGlowTarget
     }
 
+    if (this.stretchMute > 0) {
+      this.stretchMute = Math.max(
+        0,
+        this.stretchMute - dt / PLAYER.bounceStretchMuteDuration,
+      )
+    }
+    if (this.impactCooldown > 0) {
+      this.impactCooldown = Math.max(0, this.impactCooldown - dt)
+    }
+
     this.updateTrail(dt)
   }
 
@@ -96,7 +140,9 @@ export class Player {
   }
 
   get stretch(): number {
-    return stretchFromSpeed(this.speed)
+    const base = stretchFromSpeed(this.speed)
+    const mute = this.stretchMute * PLAYER.bounceStretchMute
+    return base * (1 - mute) * this.stretchScale
   }
 
   get heading(): number {

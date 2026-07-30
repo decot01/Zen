@@ -15,6 +15,8 @@ const PATTERNS: Record<HapticKind, number | number[]> = {
 }
 
 let enabled = true
+/** Skip navigator.vibrate until after the first haptic attempt (Chrome gesture gate). */
+let vibrateReady = false
 
 export function setHapticsEnabled(value: boolean): void {
   enabled = value
@@ -70,12 +72,17 @@ export function pulseHaptic(kind: HapticKind): void {
 
   telegramPulse(kind)
 
+  // First call only unlocks; Chrome logs Intervention if vibrate runs too early.
+  if (!vibrateReady) {
+    vibrateReady = true
+    return
+  }
   if (typeof navigator === 'undefined' || typeof navigator.vibrate !== 'function') {
     return
   }
   try {
     navigator.vibrate(PATTERNS[kind])
   } catch {
-    // Vibration blocked
+    // Vibration blocked / unsupported
   }
 }

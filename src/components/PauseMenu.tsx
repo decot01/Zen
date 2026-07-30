@@ -32,7 +32,7 @@ export function PauseMenu({
   onToggleHaptics,
 }: PauseMenuProps) {
   return (
-    <div className="absolute inset-0 z-30 flex items-center justify-center bg-background/60 px-6 backdrop-blur-md">
+    <div className="absolute inset-0 z-30 flex items-center justify-center px-6">
       <motion.div
         className="w-full max-w-xs"
         variants={cardVariants}
@@ -40,7 +40,7 @@ export function PauseMenu({
         animate="animate"
         exit="exit"
       >
-        <Card className="rounded-[2rem] bg-card/95 shadow-2xl">
+        <Card className="rounded-[2rem] border-border/70 bg-card/95 shadow-2xl backdrop-blur-md">
           <CardHeader className="items-center pb-2">
             <CardTitle className="text-xl">Paused</CardTitle>
           </CardHeader>

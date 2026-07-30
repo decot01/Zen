@@ -1,4 +1,4 @@
-import { PRIZE_ORB, WHITE_ORB } from './constants'
+import { EVENTS, PRIZE_ORB, WHITE_ORB } from './constants'
 import { clamp, easeOutBack, easeOutCubic, length, normalize } from '@/utils/math'
 import { randomRange } from '@/utils/random'
 
@@ -20,6 +20,13 @@ export class Orb {
   life = 0
   private fleeVx = 0
   private fleeVy = 0
+  /** Shockwave knockback on base position. */
+  private knockVx = 0
+  private knockVy = 0
+  /** Radar event — 1 while arena is dimmed. */
+  radarDim = 0
+  /** Radar event — 0→1 highlight after a pulse detects this orb. */
+  radarReveal = 0
 
   constructor(x: number, y: number, kind: OrbKind = 'normal') {
     this.x = x
@@ -47,6 +54,10 @@ export class Orb {
     this.kind = kind
     this.fleeVx = 0
     this.fleeVy = 0
+    this.knockVx = 0
+    this.knockVy = 0
+    this.radarReveal = 0
+    // radarDim is owned by RadarEvent each frame
     if (kind === 'prize') {
       this.radius = PRIZE_ORB.radius
       this.hitRadius = PRIZE_ORB.hitRadius
@@ -56,6 +67,11 @@ export class Orb {
       this.hitRadius = WHITE_ORB.hitRadius
       this.life = 0
     }
+  }
+
+  applyKnock(vx: number, vy: number): void {
+    this.knockVx += vx
+    this.knockVy += vy
   }
 
   update(
@@ -70,6 +86,18 @@ export class Orb {
       0,
       1,
     )
+
+    const damp = Math.exp(-EVENTS.shockwave.knockDecay * dt)
+    this.baseX += this.knockVx * dt
+    this.baseY += this.knockVy * dt
+    this.knockVx *= damp
+    this.knockVy *= damp
+    if (Math.abs(this.knockVx) < 4) this.knockVx = 0
+    if (Math.abs(this.knockVy) < 4) this.knockVy = 0
+    if (bounds) {
+      this.baseX = clamp(this.baseX, bounds.minX, bounds.maxX)
+      this.baseY = clamp(this.baseY, bounds.minY, bounds.maxY)
+    }
 
     if (this.kind === 'prize' && this.alive) {
       this.life -= dt

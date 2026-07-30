@@ -11,6 +11,8 @@ import {
   WHITE_ORB,
 } from './constants'
 import { Enemy } from './Enemy'
+import type { EventContext, EventVisuals } from './events/EventContext'
+import { EventManager } from './events/EventManager'
 import { Haptics } from './Haptics'
 import { Orb } from './Orb'
 import { ParticleSystem } from './Particles'
@@ -19,6 +21,7 @@ import { Renderer } from './Renderer'
 import { Spawner } from './Spawner'
 import { getChromeInsets, isTelegramMiniApp } from '@/lib/telegram'
 import { loadSettings, updateSettings } from '@/utils/storage'
+import { length } from '@/utils/math'
 import { randomRange } from '@/utils/random'
 
 export type GamePhase = 'menu' | 'playing' | 'paused' | 'gameover'
@@ -36,6 +39,7 @@ export interface GameSnapshot {
   haptics: boolean
   isNewBest: boolean
   dying: boolean
+  activeEvent: string | null
 }
 
 export type SnapshotListener = (snapshot: GameSnapshot) => void
@@ -46,6 +50,7 @@ export class Game {
   readonly audio = new GameAudio()
   readonly haptics = new Haptics()
   readonly spawner = new Spawner()
+  readonly eventManager = new EventManager()
 
   private renderer: Renderer | null = null
   private orbs: Orb[] = []
@@ -79,6 +84,8 @@ export class Game {
   private listener: SnapshotListener | null = null
   private deathDelay = 0
   private dying = false
+  /** Lethal blast requested during event update — applied after the event step. */
+  private pendingBlastKill = false
   private playerHidden = false
   /** 1 = full board, 0 = cleared — fades out on death before game over UI. */
   private worldAlpha = 1
@@ -153,6 +160,7 @@ export class Game {
       haptics: this.haptics.isEnabled(),
       isNewBest: this.isNewBest,
       dying: this.dying,
+      activeEvent: this.eventManager.activeLabel,
     }
   }
 
@@ -204,6 +212,7 @@ export class Game {
   quitToMenu(): void {
     this.phase = 'menu'
     this.dying = false
+    this.pendingBlastKill = false
     this.playerHidden = false
     this.worldAlpha = 1
     this.releasePointer()
@@ -242,8 +251,10 @@ export class Game {
       PRIZE_ORB.firstDelayMin,
       PRIZE_ORB.firstDelayMax,
     )
+    this.eventManager.reset()
     this.deathDelay = 0
     this.dying = false
+    this.pendingBlastKill = false
     this.playerHidden = false
     this.worldAlpha = 1
     this.isNewBest = false
@@ -342,9 +353,11 @@ export class Game {
   }
 
   private spawnEnemy(): void {
-    if (this.enemies.length >= ENEMY.maxCount) return
+    if (this.eventManager.blocksEnemySpawns) return
+    if (this.enemies.filter((e) => e.alive).length >= ENEMY.maxCount) return
     const pos = this.findSpawn()
-    if (pos) this.enemies.push(new Enemy(pos.x, pos.y))
+    if (!pos) return
+    this.spawnEnemyAt(pos.x, pos.y)
   }
 
   private update(dt: number): void {
@@ -419,14 +432,15 @@ export class Game {
       this.height,
     )
 
-    const chromeTop = isTelegramMiniApp() ? getChromeInsets().top : 0
-    const topInset = Math.max(SPAWN.topInset, chromeTop + 72)
-    const orbBounds = {
-      minX: SPAWN.padding,
-      maxX: this.width - SPAWN.padding,
-      minY: SPAWN.padding + topInset,
-      maxY: this.height - SPAWN.padding - SPAWN.bottomInset,
+    const ctx = this.buildEventContext(dt)
+    this.eventManager.update(dt, ctx)
+    this.refillEnemiesToTarget()
+    if (this.pendingBlastKill) {
+      this.pendingBlastKill = false
+      if (!this.dying) this.killPlayer()
+      return
     }
+
     const hazards = this.enemies.map((e) => ({
       x: e.x,
       y: e.y,
@@ -436,17 +450,90 @@ export class Game {
       orb.update(
         dt,
         { x: this.player.x, y: this.player.y },
-        orbBounds,
+        ctx.bounds,
         hazards,
       )
     }
-    for (const enemy of this.enemies) enemy.update(dt)
+    for (const enemy of this.enemies) {
+      enemy.update(dt, { x: this.player.x, y: this.player.y }, ctx.bounds)
+    }
 
     this.handleCollections()
     if (!this.dying) this.handleEnemyHits()
     this.ensureMinOrbs()
 
     this.particles.update(dt)
+  }
+
+  private buildEventContext(dt: number): EventContext {
+    const chromeTop = isTelegramMiniApp() ? getChromeInsets().top : 0
+    const topInset = Math.max(SPAWN.topInset, chromeTop + 72)
+    return {
+      dt,
+      elapsed: this.elapsed,
+      difficultyTicks: this.difficultyTicks,
+      width: this.width,
+      height: this.height,
+      bounds: {
+        minX: SPAWN.padding,
+        maxX: this.width - SPAWN.padding,
+        minY: SPAWN.padding + topInset,
+        maxY: this.height - SPAWN.padding - SPAWN.bottomInset,
+      },
+      player: this.player,
+      orbs: this.orbs,
+      enemies: this.enemies,
+      particles: this.particles,
+      audio: this.audio,
+      findOrbSpawn: (exclude, extra) => this.findOrbSpawn(exclude ?? null, extra ?? 0),
+      findSpawn: (extra) => this.findSpawn(extra ?? 0),
+      spawnEnemyAt: (x, y) => this.spawnEnemyAt(x, y),
+      setTargetEnemyCount: (n) => {
+        this.targetEnemyCount = Math.min(ENEMY.maxCount, Math.max(ENEMY.initialCount, n))
+      },
+      addScore: (points) => {
+        this.score += Math.max(0, Math.floor(points))
+      },
+      applyPlayerImpulse: (vx, vy, maxSpeed) => {
+        this.player.vx += vx
+        this.player.vy += vy
+        if (maxSpeed != null) {
+          const s = length(this.player.vx, this.player.vy)
+          if (s > maxSpeed) {
+            this.player.vx = (this.player.vx / s) * maxSpeed
+            this.player.vy = (this.player.vy / s) * maxSpeed
+          }
+        }
+      },
+      killPlayer: () => {
+        this.pendingBlastKill = true
+      },
+      dying: this.dying || this.pendingBlastKill,
+    }
+  }
+
+  private spawnEnemyAt(x: number, y: number): Enemy | null {
+    if (this.eventManager.blocksEnemySpawns) return null
+    if (this.enemies.filter((e) => e.alive).length >= ENEMY.maxCount) return null
+    // Reuse dead slots
+    const dead = this.enemies.find((e) => !e.alive)
+    if (dead) {
+      dead.x = x
+      dead.y = y
+      dead.baseX = x
+      dead.baseY = y
+      dead.age = 0
+      dead.alive = true
+      dead.setBerserk(false)
+      dead.clearCharge()
+      dead.knockVx = 0
+      dead.knockVy = 0
+      return dead
+    }
+    if (this.enemies.length >= ENEMY.maxCount) return null
+    const enemy = new Enemy(x, y)
+    this.enemies.push(enemy)
+    return enemy
   }
 
   private updatePrizeOrb(dt: number): void {
@@ -509,15 +596,23 @@ export class Game {
       ENEMY.maxCount,
       this.targetEnemyCount + DIFFICULTY.enemyIncrement,
     )
-    while (this.enemies.length < this.targetEnemyCount) {
-      this.spawnEnemy()
-    }
+    this.refillEnemiesToTarget()
     this.player.scaleDifficulty(DIFFICULTY.speedMultiplier)
     this.spawner.shrinkSafeSpace(DIFFICULTY.safeRadiusShrink)
     this.bonusOrbInterval = Math.max(
       DIFFICULTY.minBonusOrbInterval,
       this.bonusOrbInterval * DIFFICULTY.spawnRateMultiplier,
     )
+  }
+
+  /** Spawn up to targetEnemyCount when visibility events are not blocking. */
+  private refillEnemiesToTarget(): void {
+    if (this.eventManager.blocksEnemySpawns) return
+    while (this.enemies.length < this.targetEnemyCount) {
+      const before = this.enemies.length
+      this.spawnEnemy()
+      if (this.enemies.length === before) break
+    }
   }
 
   private handleCollections(): void {
@@ -574,6 +669,9 @@ export class Game {
       this.audio.playCombo(this.combo)
     }
 
+    const ctx = this.buildEventContext(0)
+    this.eventManager.onOrbCollected(hit, ctx)
+
     if (isPrize) {
       hit.alive = false
       return
@@ -603,13 +701,19 @@ export class Game {
       this.player.y,
       this.player.radius * 0.75,
       this.enemies,
-      (e) => e.alive && e.armed,
+      (e) => e.alive && e.isHazardous,
     )
     if (!hit) return
     this.killPlayer()
   }
 
   private killPlayer(): void {
+    if (this.dying) return
+    this.dying = true
+    this.pendingBlastKill = false
+    const ctx = this.buildEventContext(0)
+    this.eventManager.forceEnd(ctx)
+
     this.audio.playDeath()
     this.haptics.pulse('death')
     const deathX = this.player.x
@@ -624,7 +728,6 @@ export class Game {
     // Park off-screen so nothing can redraw the ball during death FX / game over.
     this.player.x = -1000
     this.player.y = -1000
-    this.dying = true
     this.playerHidden = true
     this.worldAlpha = 1
     this.deathDelay = 0.38
@@ -654,10 +757,14 @@ export class Game {
     const showPlayer =
       this.phase === 'playing' && !this.dying && !this.playerHidden
 
+    const ctx = this.buildEventContext(0)
+    const eventVisuals: EventVisuals = this.eventManager.getVisuals(ctx)
+
     this.renderer.render(this.player, this.orbs, this.enemies, this.particles, {
       showPlayer,
       dimmed: this.phase === 'paused',
       worldAlpha: this.dying ? this.worldAlpha : 1,
+      events: eventVisuals,
     })
   }
 

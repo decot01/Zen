@@ -1,9 +1,10 @@
-import { COLORS, ENEMY, PLAYER, PRIZE_ORB } from './constants'
+import { COLORS, ENEMY, EVENTS, PLAYER, PRIZE_ORB } from './constants'
 import type { Enemy } from './Enemy'
+import type { EventVisuals } from './events/EventContext'
 import type { Orb } from './Orb'
 import type { ParticleSystem } from './Particles'
 import type { Player } from './Player'
-import { clamp } from '@/utils/math'
+import { clamp, easeOutBack, easeOutCubic } from '@/utils/math'
 
 export class Renderer {
   private canvas: HTMLCanvasElement
@@ -43,11 +44,13 @@ export class Renderer {
       showPlayer: boolean
       dimmed?: boolean
       worldAlpha?: number
+      events?: EventVisuals | null
     } = { showPlayer: true },
   ): void {
     const ctx = this.ctx
     const shake = particles.getShakeOffset()
     const worldAlpha = clamp(options.worldAlpha ?? 1, 0, 1)
+    const events = options.events ?? null
 
     ctx.save()
     ctx.fillStyle = COLORS.background
@@ -57,12 +60,40 @@ export class Renderer {
 
     this.drawAmbient()
 
+    if (events?.radar) {
+      this.drawRadarDarkness(events.radar)
+    }
+
+    if (events?.shockwave) {
+      this.drawShockwaveEvent(events.shockwave)
+    }
+
+    if (events?.sniper) {
+      this.drawSniperLasers(events.sniper)
+    }
+    if (events?.crossfire) {
+      this.drawSniperLasers(events.crossfire, 1.2)
+    }
+    if (events?.bulletHell) {
+      this.drawSniperLasers(events.bulletHell, 1.25)
+    }
+
     for (const orb of orbs) {
       if (orb.alive) this.drawWhiteOrb(orb)
     }
 
     for (const enemy of enemies) {
       if (enemy.alive) this.drawEnemy(enemy)
+    }
+
+    if (events?.sniper) {
+      this.drawSniperDrones(events.sniper)
+    }
+    if (events?.crossfire) {
+      this.drawSniperDrones(events.crossfire)
+    }
+    if (events?.bulletHell) {
+      this.drawSniperDrones(events.bulletHell)
     }
 
     // Soft blackout of the playfield (orbs/enemies) while death FX keep playing.
@@ -86,11 +117,325 @@ export class Renderer {
       ctx.fillRect(-shake.x, -shake.y, this.width, this.height)
     }
 
+    // Radar pulse rings (darkness is drawn earlier with entities).
+    if (events?.radar) {
+      this.drawRadarPulses(events.radar)
+    }
+
     if (options.dimmed) {
       ctx.fillStyle = 'rgba(0, 0, 0, 0.5)'
       ctx.fillRect(-shake.x, -shake.y, this.width, this.height)
     }
 
+    ctx.restore()
+
+    if (events?.chainExplosion && events.chainExplosion.vignette > 0.01) {
+      this.drawChainExplosionVignette(events.chainExplosion.vignette)
+    }
+
+    // Screen-fixed frame so shake never leaves a black gap at the edges.
+    if (events?.energyWalls) {
+      this.drawEnergyWalls(events.energyWalls)
+    }
+  }
+
+  private drawChainExplosionVignette(strength: number): void {
+    const ctx = this.ctx
+    const g = ctx.createRadialGradient(
+      this.width * 0.5,
+      this.height * 0.5,
+      Math.min(this.width, this.height) * 0.28,
+      this.width * 0.5,
+      this.height * 0.5,
+      Math.hypot(this.width, this.height) * 0.62,
+    )
+    g.addColorStop(0, 'rgba(0, 0, 0, 0)')
+    g.addColorStop(0.55, `rgba(40, 0, 0, ${0.08 * strength})`)
+    g.addColorStop(1, `rgba(0, 0, 0, ${0.55 * strength})`)
+    ctx.fillStyle = g
+    ctx.fillRect(0, 0, this.width, this.height)
+  }
+
+  private drawEnergyWalls(
+    walls: NonNullable<EventVisuals['energyWalls']>,
+  ): void {
+    const ctx = this.ctx
+    const { x, y, w, h, intensity, time, impact } = walls
+    const baseT = EVENTS.energyWalls.borderThickness
+    const openDur = EVENTS.energyWalls.openDuration
+    const maxJerk = EVENTS.energyWalls.impactOffset
+
+    // Soft open (easeOutBack) + fade-linked settle — matches UI motion weight.
+    const rawOpen = clamp(time / openDur, 0, 1)
+    const open = easeOutBack(rawOpen)
+    const settle = easeOutCubic(intensity)
+    const maxInset = Math.min(w, h) * 0.38
+    const inset = (1 - clamp(open, 0, 1) * settle) * maxInset
+
+    const breathe = 0.92 + Math.sin(time * 2.15) * 0.08
+    const thickPulse = 1 + Math.sin(time * 2.15) * 0.05
+    const a = Math.min(1, settle * breathe * (0.4 + 0.6 * clamp(open, 0, 1)))
+    const t = Math.max(
+      1,
+      baseT * easeOutCubic(clamp(open, 0, 1)) * thickPulse * (0.85 + 0.15 * settle),
+    )
+
+    const rx = x + inset
+    const ry = y + inset
+    const rw = Math.max(t * 2, w - inset * 2)
+    const rh = Math.max(t * 2, h - inset * 2)
+
+    // Bounce jerk: hit side punches inward then springs back.
+    const jerk = (v: number) => Math.sin(clamp(v, 0, 1) * Math.PI) * maxJerk
+    const jL = jerk(impact.left)
+    const jR = jerk(impact.right)
+    const jT = jerk(impact.top)
+    const jB = jerk(impact.bottom)
+    const hit =
+      Math.max(impact.left, impact.right, impact.top, impact.bottom)
+
+    const left = rx + t / 2 + jL
+    const right = rx + rw - t / 2 - jR
+    const top = ry + t / 2 + jT
+    const bottom = ry + rh - t / 2 - jB
+
+    ctx.save()
+    ctx.strokeStyle = a >= 0.999 ? '#ffffff' : `rgba(255, 255, 255, ${a})`
+    ctx.lineWidth = t * (1 + hit * 0.35)
+    ctx.lineJoin = 'miter'
+    ctx.miterLimit = 2
+    if (hit > 0.05) {
+      ctx.shadowColor = `rgba(255, 255, 255, ${0.14 * hit * a})`
+      ctx.shadowBlur = 2 + hit * 4
+    }
+    ctx.beginPath()
+    ctx.moveTo(left, top)
+    ctx.lineTo(right, top)
+    ctx.lineTo(right, bottom)
+    ctx.lineTo(left, bottom)
+    ctx.closePath()
+    ctx.stroke()
+    ctx.restore()
+  }
+
+  private drawShockwaveEvent(
+    sw: NonNullable<EventVisuals['shockwave']>,
+  ): void {
+    const ctx = this.ctx
+    const a = Math.min(1, sw.intensity)
+
+    for (const wave of sw.waves) {
+      // Flat 2D stripe — crisp line + thin uniform wash (no volumetric gradient).
+      ctx.save()
+      ctx.globalAlpha = a
+
+      if (wave.edge === 'top' || wave.edge === 'bottom') {
+        const y = wave.pos
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.06)'
+        ctx.fillRect(0, y - 4, this.width, 8)
+        ctx.strokeStyle = '#ffffff'
+        ctx.lineWidth = 1.5
+        ctx.beginPath()
+        ctx.moveTo(0, y)
+        ctx.lineTo(this.width, y)
+        ctx.stroke()
+      } else {
+        const x = wave.pos
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.06)'
+        ctx.fillRect(x - 4, 0, 8, this.height)
+        ctx.strokeStyle = '#ffffff'
+        ctx.lineWidth = 1.5
+        ctx.beginPath()
+        ctx.moveTo(x, 0)
+        ctx.lineTo(x, this.height)
+        ctx.stroke()
+      }
+
+      ctx.restore()
+    }
+  }
+
+  private drawSniperLasers(
+    sn: NonNullable<
+      EventVisuals['sniper'] | EventVisuals['crossfire'] | EventVisuals['bulletHell']
+    >,
+    glowMul = 1,
+  ): void {
+    const ctx = this.ctx
+    const a = Math.min(1, sn.intensity)
+    if (a < 0.02) return
+
+    for (const laser of sn.lasers) {
+      const { x1, y1, x2, y2 } = laser.line
+      const pulse = laser.warningPulse
+      const locked = laser.phase === 'locked'
+      const firing = laser.phase === 'firing'
+      const yellow = laser.tint === 'yellow'
+      const core = firing
+        ? 0.95
+        : locked
+          ? 0.55 + pulse * 0.35
+          : 0.25 + pulse * 0.35
+      const glow =
+        (firing ? 14 + laser.fireFlash * 18 : locked ? 8 : 5) *
+        glowMul *
+        (yellow ? 1.25 : 1)
+
+      ctx.save()
+      ctx.globalAlpha = a * (0.55 + core * 0.45)
+
+      ctx.strokeStyle = firing
+        ? yellow
+          ? `rgba(255, 245, 180, ${0.4 + laser.fireFlash * 0.5})`
+          : `rgba(255, 220, 220, ${0.35 + laser.fireFlash * 0.5})`
+        : yellow
+          ? `rgba(250, 200, 40, ${0.25 + pulse * 0.3})`
+          : `rgba(255, 80, 80, ${0.2 + pulse * 0.25})`
+      ctx.lineWidth = firing ? 10 * glowMul * (yellow ? 1.1 : 1) : locked ? 6 : 4
+      ctx.shadowColor = yellow ? '#fbbf24' : '#ff3333'
+      ctx.shadowBlur = glow
+      ctx.beginPath()
+      ctx.moveTo(x1, y1)
+      ctx.lineTo(x2, y2)
+      ctx.stroke()
+
+      ctx.shadowBlur = glow * 0.4
+      ctx.strokeStyle = firing
+        ? '#ffffff'
+        : yellow
+          ? locked
+            ? `rgba(255, 230, 120, ${0.75 + pulse * 0.25})`
+            : `rgba(250, 204, 70, ${0.45 + pulse * 0.4})`
+          : locked
+            ? `rgba(255, 180, 180, ${0.7 + pulse * 0.3})`
+            : `rgba(255, 120, 120, ${0.4 + pulse * 0.4})`
+      ctx.lineWidth = firing ? 2.5 + laser.fireFlash * 2 : locked ? 1.75 : 1.15
+      ctx.beginPath()
+      ctx.moveTo(x1, y1)
+      ctx.lineTo(x2, y2)
+      ctx.stroke()
+
+      ctx.restore()
+    }
+  }
+
+  private drawSniperDrones(
+    sn: NonNullable<
+      EventVisuals['sniper'] | EventVisuals['crossfire'] | EventVisuals['bulletHell']
+    >,
+  ): void {
+    const ctx = this.ctx
+    const a = Math.min(1, sn.intensity)
+    const size = EVENTS.sniper.droneSize
+
+    for (const d of sn.drones) {
+      if (d.appear < 0.02) continue
+      const yellow = d.tint === 'yellow'
+      ctx.save()
+      ctx.translate(d.x, d.y)
+      ctx.globalAlpha = a * d.appear
+
+      ctx.shadowColor = yellow ? '#f59e0b' : '#ff2222'
+      ctx.shadowBlur = yellow ? 14 : 10
+      ctx.fillStyle = '#1a1a1a'
+      ctx.strokeStyle = yellow ? '#fbbf24' : '#ff5555'
+      ctx.lineWidth = 1.5
+      ctx.beginPath()
+      ctx.moveTo(0, -size)
+      ctx.lineTo(size * 0.85, 0)
+      ctx.lineTo(0, size)
+      ctx.lineTo(-size * 0.85, 0)
+      ctx.closePath()
+      ctx.fill()
+      ctx.stroke()
+
+      ctx.shadowBlur = yellow ? 16 : 12
+      ctx.shadowColor = yellow ? '#facc15' : '#ff0000'
+      ctx.fillStyle = yellow ? '#fbbf24' : '#ff3333'
+      ctx.beginPath()
+      ctx.arc(0, 0, size * 0.28, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.fillStyle = '#ffffff'
+      ctx.shadowBlur = 0
+      ctx.beginPath()
+      ctx.arc(0, 0, size * 0.1, 0, Math.PI * 2)
+      ctx.fill()
+
+      ctx.restore()
+    }
+  }
+
+  private drawRadarDarkness(
+    radar: NonNullable<EventVisuals['radar']>,
+  ): void {
+    const ctx = this.ctx
+    const dark = radar.darkness
+    if (dark < 0.02) return
+
+    const px = radar.playerX
+    const py = radar.playerY
+    const maxR = Math.hypot(this.width, this.height)
+    const hole = PLAYER.radius * 2.4
+
+    ctx.save()
+    const g = ctx.createRadialGradient(px, py, hole * 0.25, px, py, maxR)
+    g.addColorStop(0, 'rgba(0, 0, 0, 0)')
+    g.addColorStop(hole / maxR, `rgba(0, 0, 0, ${dark * 0.45})`)
+    g.addColorStop(Math.min(0.55, (hole * 3) / maxR), `rgba(0, 0, 0, ${dark * 0.92})`)
+    g.addColorStop(1, `rgba(0, 0, 0, ${dark})`)
+    ctx.fillStyle = g
+    ctx.fillRect(0, 0, this.width, this.height)
+    ctx.restore()
+  }
+
+  private drawRadarPulses(
+    radar: NonNullable<EventVisuals['radar']>,
+  ): void {
+    const ctx = this.ctx
+    const a = Math.min(1, radar.intensity)
+    if (a < 0.02 || radar.pulses.length === 0) return
+
+    ctx.save()
+    for (const pulse of radar.pulses) {
+      const alpha = pulse.alpha * a
+      if (alpha < 0.02) continue
+
+      // Soft green wash behind the front
+      const band = ctx.createRadialGradient(
+        pulse.x,
+        pulse.y,
+        Math.max(0, pulse.radius - 22),
+        pulse.x,
+        pulse.y,
+        pulse.radius + 2,
+      )
+      band.addColorStop(0, 'rgba(80, 220, 120, 0)')
+      band.addColorStop(0.7, `rgba(70, 210, 110, ${0.05 * alpha})`)
+      band.addColorStop(1, 'rgba(80, 220, 120, 0)')
+      ctx.globalAlpha = 1
+      ctx.fillStyle = band
+      ctx.beginPath()
+      ctx.arc(pulse.x, pulse.y, pulse.radius + 2, 0, Math.PI * 2)
+      ctx.fill()
+
+      ctx.globalAlpha = alpha * 0.7
+      ctx.strokeStyle = '#4ade80'
+      ctx.lineWidth = 1.8
+      ctx.shadowColor = '#22c55e'
+      ctx.shadowBlur = 10
+      ctx.beginPath()
+      ctx.arc(pulse.x, pulse.y, pulse.radius, 0, Math.PI * 2)
+      ctx.stroke()
+
+      ctx.globalAlpha = alpha * 0.28
+      ctx.strokeStyle = '#bbf7d0'
+      ctx.lineWidth = 1
+      ctx.shadowBlur = 4
+      ctx.beginPath()
+      ctx.arc(pulse.x, pulse.y, Math.max(1, pulse.radius - 5), 0, Math.PI * 2)
+      ctx.stroke()
+      ctx.shadowBlur = 0
+    }
     ctx.restore()
   }
 
@@ -159,6 +504,7 @@ export class Renderer {
     const bb = Math.round(a[2] + (b[2] - a[2]) * f)
     const dprScale = this.dpr > 1.5 ? 0.95 : 0.72
     const blurScale = 1.2 + comboT * 0.28
+
     ctx.shadowColor = `rgb(${rr}, ${gg}, ${bb})`
     ctx.shadowBlur = PLAYER.glowBlur * dprScale * blurScale
 
@@ -183,6 +529,10 @@ export class Renderer {
     const ctx = this.ctx
     const scale = orb.scale
     const r = Math.max(0.5, orb.radius * scale)
+    const dim = orb.radarDim
+    const rev = orb.radarReveal
+    // Between scans: fully hidden (no silhouettes — harder than Blackout lamp).
+    if (dim > 0.05 && rev < 0.08) return
     const alpha = orb.alpha
     const prize = orb.kind === 'prize'
 
@@ -262,6 +612,7 @@ export class Renderer {
       ctx.fill()
     } else {
       ctx.shadowBlur = 0
+      ctx.shadowColor = 'rgba(255,255,255,0.85)'
       ctx.globalAlpha = alpha
       ctx.beginPath()
       ctx.arc(0, 0, r, 0, Math.PI * 2)
@@ -274,43 +625,128 @@ export class Renderer {
 
   private drawEnemy(enemy: Enemy): void {
     const ctx = this.ctx
-    const scale = enemy.scale * enemy.pulse
+    const charging = enemy.charging
+    const cp = enemy.chargeProgress
+    const phased = enemy.phaseAmount
+    const dim = enemy.radarDim
+    const rev = enemy.radarReveal
+    // Between scans: fully hidden (no silhouettes — harder than Blackout lamp).
+    if (dim > 0.05 && rev < 0.08) return
+    const scale = enemy.scale * enemy.pulse * (1 + phased * 0.06)
     const r = enemy.radius * scale
     const alpha = enemy.alpha
+    const glowMul = enemy.berserk
+      ? EVENTS.berserk.glowMul
+      : charging
+        ? 1.4 + cp * 2.2
+        : phased > 0.05
+          ? 1.2 + phased * 1.4
+          : 1
+    const flash =
+      charging && Math.sin(enemy.age * (14 + cp * 22)) > 0.15 ? 1 : 0
+    const phaseGlow = phased > 0.05
 
     ctx.save()
     ctx.translate(enemy.x, enemy.y)
     ctx.globalAlpha = alpha
 
-    ctx.shadowColor = enemy.armed ? COLORS.white : COLORS.danger
-    ctx.shadowBlur = enemy.armed
-      ? ENEMY.glowBlur * 0.7
-      : ENEMY.glowBlur * 0.35
+    ctx.shadowColor = charging
+      ? flash
+        ? '#ffaaaa'
+        : '#ff3333'
+      : phaseGlow
+        ? '#8b5cf6'
+        : enemy.berserk
+          ? '#ff4444'
+          : enemy.armed
+            ? COLORS.white
+            : COLORS.danger
+    ctx.shadowBlur =
+      (enemy.armed || charging || phaseGlow
+        ? ENEMY.glowBlur * 0.7
+        : ENEMY.glowBlur * 0.35) * glowMul
 
     ctx.beginPath()
     ctx.arc(0, 0, r, 0, Math.PI * 2)
-    ctx.fillStyle = enemy.armed ? COLORS.dangerDark : 'rgba(63, 63, 70, 0.55)'
+    ctx.fillStyle = charging
+      ? flash
+        ? '#7a2020'
+        : '#4a1010'
+      : phaseGlow
+        ? `rgba(${Math.round(40 + phased * 20)}, ${Math.round(30 + phased * 40)}, ${Math.round(70 + phased * 80)}, ${0.35 + phased * 0.25})`
+        : enemy.berserk
+          ? '#5c1515'
+          : enemy.armed
+            ? COLORS.dangerDark
+            : 'rgba(63, 63, 70, 0.55)'
     ctx.fill()
 
     ctx.shadowBlur = 0
-    ctx.lineWidth = enemy.armed ? 2.2 : 1.5
-    ctx.strokeStyle = enemy.armed ? COLORS.white : COLORS.danger
+    ctx.lineWidth =
+      enemy.armed || enemy.berserk || charging || phaseGlow ? 2.2 : 1.5
+    ctx.strokeStyle = charging
+      ? flash
+        ? '#ffffff'
+        : '#ff6b6b'
+      : phaseGlow
+        ? `rgba(${Math.round(120 + phased * 80)}, ${Math.round(140 + phased * 60)}, 250, ${0.55 + phased * 0.4})`
+        : enemy.berserk
+          ? '#ff6b6b'
+          : enemy.armed
+            ? COLORS.white
+            : COLORS.danger
     ctx.beginPath()
     ctx.arc(0, 0, r, 0, Math.PI * 2)
     ctx.stroke()
 
+    if (phased > 0.08 && phased < 0.95) {
+      const rip = 1.2 + (1 - Math.abs(phased - 0.5) * 2) * 0.35
+      ctx.globalAlpha = alpha * (0.25 + (1 - Math.abs(phased - 0.5) * 2) * 0.4)
+      ctx.strokeStyle = '#a78bfa'
+      ctx.lineWidth = 1.25
+      ctx.beginPath()
+      ctx.arc(0, 0, r * rip, 0, Math.PI * 2)
+      ctx.stroke()
+      ctx.globalAlpha = alpha
+    }
+
     ctx.beginPath()
     ctx.arc(0, 0, r * 0.28, 0, Math.PI * 2)
-    ctx.fillStyle = enemy.armed ? COLORS.white : 'rgba(250, 250, 250, 0.35)'
+    ctx.fillStyle = phaseGlow
+      ? `rgba(180, 200, 255, ${0.4 + phased * 0.5})`
+      : enemy.armed || enemy.berserk || charging
+        ? COLORS.white
+        : 'rgba(250, 250, 250, 0.35)'
     ctx.fill()
 
-    if (!enemy.armed) {
+    if (!enemy.armed && !charging) {
       ctx.globalAlpha = 0.3 + enemy.armProgress * 0.45
       ctx.strokeStyle = COLORS.white
       ctx.lineWidth = 1.25
       ctx.beginPath()
       ctx.arc(0, 0, r * (1.45 + (1 - enemy.armProgress) * 0.55), 0, Math.PI * 2)
       ctx.stroke()
+    }
+
+    // Charge: blast-radius preview + accelerating blink.
+    if (charging) {
+      const blastR = EVENTS.chainExplosion.blastRadius
+      const blinkHz = 2.5 + cp * 8
+      const blink = 0.5 + 0.5 * Math.sin(enemy.age * Math.PI * 2 * blinkHz)
+      const ringA = (0.18 + cp * 0.55) * (0.4 + blink * 0.6)
+
+      ctx.globalAlpha = alpha * ringA
+      ctx.strokeStyle = flash ? '#ffffff' : '#ff8a8a'
+      ctx.lineWidth = 1.5 + cp * 2
+      ctx.beginPath()
+      ctx.arc(0, 0, blastR, 0, Math.PI * 2)
+      ctx.stroke()
+
+      ctx.globalAlpha = alpha * (0.04 + cp * 0.14) * blink
+      ctx.fillStyle = '#ff4444'
+      ctx.beginPath()
+      ctx.arc(0, 0, blastR, 0, Math.PI * 2)
+      ctx.fill()
     }
 
     ctx.restore()

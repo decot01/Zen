@@ -11,6 +11,7 @@ interface HUDProps {
   best: number
   combo: number
   elapsed: number
+  activeEvent?: string | null
 }
 
 function formatTime(seconds: number): string {
@@ -55,7 +56,7 @@ function HudStat({
   )
 }
 
-export function HUD({ score, best, combo, elapsed }: HUDProps) {
+export function HUD({ score, best, combo, elapsed, activeEvent }: HUDProps) {
   const showCombo = combo > 1
 
   return (
@@ -102,6 +103,26 @@ export function HUD({ score, best, combo, elapsed }: HUDProps) {
             <HudStat label="Best" value={best} align="right" />
           </div>
         </Card>
+
+        <AnimatePresence>
+          {activeEvent && (
+            <motion.div
+              key={activeEvent}
+              className="mt-2 flex justify-center"
+              initial={{ opacity: 0, y: -6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -4 }}
+              transition={transitionSpringSnappy}
+            >
+              <Badge
+                variant="outline"
+                className="border-foreground/20 bg-card/80 px-3 py-1 text-[10px] uppercase tracking-[0.16em] text-foreground/90 backdrop-blur-sm"
+              >
+                {activeEvent}
+              </Badge>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </motion.div>
     </div>
   )

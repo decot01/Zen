@@ -24,9 +24,14 @@ export const PLAYER = {
   wallBounce: 0.62,
   trailLength: 22,
   trailSpacing: 1.8,
-  stretchMax: 0.48,
-  stretchSpeedRef: 360,
+  stretchMax: 0.28,
+  stretchSpeedRef: 420,
   comboGlowBoost: 0.12,
+  /** Cooldown so one wall contact doesn't re-fire every frame. */
+  wallImpactCooldown: 0.14,
+  /** How long + how hard to mute speed-stretch after a wall kick. */
+  bounceStretchMuteDuration: 0.55,
+  bounceStretchMute: 0.95,
 } as const
 
 export const WHITE_ORB = {
@@ -154,4 +159,130 @@ export const LOOP = {
 export const SCORE_POPUP = {
   life: 0.85,
   riseSpeed: 48,
+} as const
+
+/** Timed world events — independent from difficulty ticks. */
+export const EVENTS = {
+  cooldownMin: 15,
+  cooldownMax: 25,
+  fadeIn: 0.55,
+  fadeOut: 0.55,
+  energyWalls: {
+    unlockStage: 2,
+    duration: 12,
+    /** White frame thickness along playfield edges. */
+    borderThickness: 5,
+    /** Soft push starts this far before the ball touches the border. */
+    bandWidth: 20,
+    pushStrength: 9500,
+    pushMaxSpeed: 1600,
+    /** Minimum outward speed after a wall hit. */
+    bounceKick: 1450,
+    /** Expand-from-center open duration (seconds). */
+    openDuration: 0.85,
+    /** Wall frame “jerk” when the ball bounces. */
+    impactDuration: 0.22,
+    impactOffset: 12,
+  },
+  shockwave: {
+    unlockStage: 3,
+    duration: 12,
+    intervalMin: 2.5,
+    intervalMax: 3.0,
+    maxWaves: 4,
+    /** Thickness of the energy band. */
+    bandWidth: 42,
+    /** Seconds for a wave to cross the arena. */
+    travelDuration: 1.4,
+    playerImpulse: 1180,
+    playerMaxSpeed: 1020,
+    knockDecay: 3.8,
+  },
+  berserk: {
+    unlockStage: 4,
+    duration: 18,
+    radiusMul: 1.55,
+    huntSpeed: 95,
+    glowMul: 2.4,
+  },
+  chainExplosion: {
+    unlockStage: 6,
+    durationMin: 12,
+    durationMax: 15,
+    /** Seconds between spontaneous charge picks. */
+    pickIntervalMin: 1.0,
+    pickIntervalMax: 1.5,
+    chargeDuration: 0.8,
+    blastRadius: 78,
+    /** Chance a nearby enemy starts charging after a blast. */
+    chainChance: 0.7,
+    maxCharging: 2,
+    maxChainExplosions: 6,
+    scorePerBlast: 25,
+    chargeScale: 1.32,
+    warnParticleInterval: 0.07,
+  },
+  sniper: {
+    unlockStage: 6,
+    duration: 15,
+    /** Seconds between drone appearances. */
+    interval: 3,
+    maxShots: 4,
+    /** Laser follows the player. */
+    trackDuration: 1.0,
+    /** Aim frozen — dodge window before fire. */
+    lockDuration: 0.6,
+    /** Hit radius of the fired beam (centerline). */
+    laserHalfWidth: 5,
+    droneMargin: 28,
+    droneSize: 10,
+    leaveDuration: 0.35,
+  },
+  crossfire: {
+    unlockStage: 8,
+    duration: 12,
+    maxWaves: 7,
+    /** Warning total ≈ track + lock = 1.5s. */
+    trackDuration: 0.9,
+    lockDuration: 0.6,
+    intervalEarly: 2.35,
+    intervalLate: 1.5,
+  },
+  bulletHell: {
+    unlockStage: 10,
+    duration: 15,
+    maxWaves: 7,
+    /** Red crossfire warning ≈ 1.5s. */
+    trackDuration: 0.9,
+    lockDuration: 0.6,
+    intervalEarly: 2.2,
+    intervalLate: 1.45,
+    /** Yellow execution laser — shorter warn. */
+    yellowTrack: 0.45,
+    yellowLock: 0.4,
+    yellowPredict: 0.28,
+    yellowCooldown: 3,
+    maxYellow: 5,
+  },
+  phaseShift: {
+    unlockStage: 6,
+    duration: 15,
+    phaseDuration: 2,
+    interval: 2,
+    /** Exact share of armed enemies that phase each wave. */
+    fraction: 0.5,
+    minLethal: 1,
+    particleInterval: 0.055,
+  },
+  radar: {
+    unlockStage: 7,
+    duration: 15,
+    interval: 3.25,
+    maxPulses: 5,
+    revealDuration: 1.2,
+    /** Seconds for a pulse to cross the arena. */
+    pulseTravel: 1.15,
+    /** Deep arena darken — no local lamp. */
+    maxDarkness: 0.88,
+  },
 } as const

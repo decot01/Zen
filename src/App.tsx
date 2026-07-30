@@ -36,6 +36,7 @@ export default function App() {
     haptics,
     isNewBest,
     dying,
+    activeEvent,
   } = snapshot
   const showHud = (phase === 'playing' || phase === 'paused') && !dying
   const showPause = phase === 'playing' && !dying
@@ -67,6 +68,7 @@ export default function App() {
               best={bestScore}
               combo={combo}
               elapsed={elapsed}
+              activeEvent={activeEvent}
             />
           </motion.div>
         )}

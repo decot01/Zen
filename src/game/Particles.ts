@@ -166,8 +166,60 @@ export class ParticleSystem {
     this.shakeMag = PARTICLES.shakeMagnitude
   }
 
-  addPopup(x: number, y: number, value: number, combo: number, life: number): void {
-    this.popups.push({ x, y, value, combo, age: 0, life, alive: true })
+  addPopup(
+    x: number,
+    y: number,
+    value: number,
+    combo: number,
+    life: number,
+    label?: string,
+  ): void {
+    this.popups.push({ x, y, value, combo, age: 0, life, alive: true, label })
+  }
+
+  emitBerserkTrail(x: number, y: number): void {
+    const p = this.acquire()
+    p.x = x + randomRange(-4, 4)
+    p.y = y + randomRange(-4, 4)
+    p.vx = randomRange(-20, 20)
+    p.vy = randomRange(-30, -8)
+    p.life = 0.35
+    p.maxLife = 0.35
+    p.size = randomRange(2.5, 5)
+    p.color = 'rgba(180, 60, 60, 0.9)'
+    p.kind = 'death'
+    p.alive = true
+    this.active.push(p)
+    if (this.active.length > PARTICLES.maxCount) {
+      const old = this.active.shift()
+      if (old) this.release(old)
+    }
+  }
+
+  /** Soft green sparks along a radar wave. */
+  emitRadarRing(x: number, y: number, radius: number, count = 6): void {
+    const room = PARTICLES.maxCount - this.active.length
+    const n = Math.min(count, Math.max(0, room))
+    for (let i = 0; i < n; i++) {
+      const angle = (Math.PI * 2 * i) / n + randomRange(-0.15, 0.15)
+      const ox = Math.cos(angle)
+      const oy = Math.sin(angle)
+      const p = this.acquire()
+      p.x = x + ox * radius
+      p.y = y + oy * radius
+      p.vx = ox * randomRange(12, 40)
+      p.vy = oy * randomRange(12, 40)
+      p.maxLife = randomRange(0.16, 0.32)
+      p.life = p.maxLife
+      p.size = randomRange(1.2, 2.6)
+      p.color =
+        Math.random() > 0.4
+          ? 'rgba(74, 222, 128, 0.9)'
+          : 'rgba(187, 247, 208, 0.85)'
+      p.kind = 'combo'
+      p.alive = true
+      this.active.push(p)
+    }
   }
 
   private burst(
