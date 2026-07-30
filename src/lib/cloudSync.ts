@@ -12,6 +12,18 @@ type CloudRecords = {
   highCombo: number
 }
 
+/** Serialize all cloud ops — concurrent setItem races overwrite higher scores. */
+let cloudQueue: Promise<unknown> = Promise.resolve()
+
+function enqueueCloud<T>(task: () => Promise<T>): Promise<T> {
+  const next = cloudQueue.then(task, task)
+  cloudQueue = next.then(
+    () => undefined,
+    () => undefined,
+  )
+  return next
+}
+
 function getCloud() {
   const wa = getTelegramWebApp()
   if (!wa?.CloudStorage) return null
@@ -82,23 +94,29 @@ function cloudCall<T>(
   })
 }
 
-async function getRawItem(key: string): Promise<unknown> {
-  const cloud = getCloud()
-  if (!cloud) return null
-  const res = await cloudCall<unknown>((cb) => {
-    cloud.getItem(key, cb)
-  })
-  if (!res.ok) return null
-  return normalizeGetResult(res.result)
-}
-
 async function readCloudRecords(): Promise<CloudRecords | null> {
   const cloud = getCloud()
   if (!cloud) return null
 
-  const fromMain = parseRecords(await getRawItem(KEY_RECORDS))
-  const legacyBest = asScore(await getRawItem(LEGACY_BEST), 0)
-  const legacyCombo = asScore(await getRawItem(LEGACY_COMBO), 1)
+  const res = await cloudCall<unknown>((cb) => {
+    cloud.getItems([KEY_RECORDS, LEGACY_BEST, LEGACY_COMBO], cb)
+  })
+  if (!res.ok) return null
+
+  let values = normalizeGetResult(res.result)
+  if (typeof values === 'string') {
+    try {
+      values = JSON.parse(values)
+    } catch {
+      return null
+    }
+  }
+  if (!values || typeof values !== 'object') return null
+
+  const map = values as Record<string, unknown>
+  const fromMain = parseRecords(normalizeGetResult(map[KEY_RECORDS]))
+  const legacyBest = asScore(normalizeGetResult(map[LEGACY_BEST]), 0)
+  const legacyCombo = asScore(normalizeGetResult(map[LEGACY_COMBO]), 1)
 
   const bestScore = Math.max(fromMain?.bestScore ?? 0, legacyBest ?? 0)
   const highCombo = Math.max(fromMain?.highCombo ?? 1, legacyCombo ?? 1)
@@ -122,51 +140,57 @@ async function writeCloudRecords(records: CloudRecords): Promise<boolean> {
   return saved.ok && saved.result !== false
 }
 
-/** Upload current local records immediately (no new high score needed). */
-export async function uploadLocalRecordsToCloud(): Promise<boolean> {
-  const local = loadSettings()
-  if (local.bestScore <= 0 && local.highCombo <= 1) return false
-  return writeCloudRecords({
-    bestScore: local.bestScore,
-    highCombo: local.highCombo,
-  })
-}
-
-/** Push local personal records to Telegram CloudStorage (no-op outside TG). */
-export function pushRecordsToCloud(bestScore: number, highCombo: number): void {
-  void writeCloudRecords({ bestScore, highCombo })
+function mergeRecords(
+  a: CloudRecords,
+  b: CloudRecords | null | undefined,
+): CloudRecords {
+  return {
+    bestScore: Math.max(a.bestScore, b?.bestScore ?? 0),
+    highCombo: Math.max(a.highCombo, b?.highCombo ?? 1),
+  }
 }
 
 /**
- * 1) Upload existing local best (so old records leave the device)
- * 2) Pull cloud / legacy keys
- * 3) Keep max, save locally, write back to cloud
+ * Push local personal records to Telegram CloudStorage.
+ * Always read→merge→write so a lower local score never clobbers cloud.
+ */
+export function pushRecordsToCloud(bestScore: number, highCombo: number): void {
+  void enqueueCloud(async () => {
+    const remote = await readCloudRecords()
+    const merged = mergeRecords({ bestScore, highCombo }, remote)
+    await writeCloudRecords(merged)
+  })
+}
+
+/**
+ * Pull cloud, merge with local (max wins), save both sides.
+ * Never write local before reading — that overwrote higher cloud scores.
  */
 export async function syncRecordsWithCloud(): Promise<
   Pick<StoredSettings, 'bestScore' | 'highCombo'> & { synced: boolean }
 > {
-  const local = loadSettings()
-  const cloud = getCloud()
-  if (!cloud) {
-    return { bestScore: local.bestScore, highCombo: local.highCombo, synced: false }
-  }
+  return enqueueCloud(async () => {
+    const local = loadSettings()
+    const cloud = getCloud()
+    if (!cloud) {
+      return { bestScore: local.bestScore, highCombo: local.highCombo, synced: false }
+    }
 
-  // Always seed cloud from whatever is already on this phone.
-  if (local.bestScore > 0 || local.highCombo > 1) {
-    await writeCloudRecords({
-      bestScore: local.bestScore,
-      highCombo: local.highCombo,
-    })
-  }
+    const remote = await readCloudRecords()
+    const merged = mergeRecords(
+      { bestScore: local.bestScore, highCombo: local.highCombo },
+      remote,
+    )
 
-  const remote = await readCloudRecords()
-  const bestScore = Math.max(local.bestScore, remote?.bestScore ?? 0)
-  const highCombo = Math.max(local.highCombo, remote?.highCombo ?? 1)
+    if (
+      merged.bestScore !== local.bestScore ||
+      merged.highCombo !== local.highCombo
+    ) {
+      saveSettings({ ...local, ...merged })
+    }
 
-  if (bestScore !== local.bestScore || highCombo !== local.highCombo) {
-    saveSettings({ ...local, bestScore, highCombo })
-  }
-
-  const synced = await writeCloudRecords({ bestScore, highCombo })
-  return { bestScore, highCombo, synced }
+    // Still write when local is ahead or equal — seeds empty cloud with old records.
+    const synced = await writeCloudRecords(merged)
+    return { ...merged, synced }
+  })
 }
