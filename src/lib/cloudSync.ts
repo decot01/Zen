@@ -153,7 +153,9 @@ async function invokeStorage<T>(
 
   if (typeof wa.invokeCustomMethod === 'function') {
     return cloudCall<T>((cb) => {
-      wa.invokeCustomMethod!(method, params, cb)
+      wa.invokeCustomMethod!(method, params, (error, result) => {
+        cb(error, result as T | undefined)
+      })
     })
   }
 
@@ -162,12 +164,16 @@ async function invokeStorage<T>(
 
   if (method === 'saveStorageValue') {
     return cloudCall<T>((cb) => {
-      cloud.setItem(String(params.key), String(params.value), cb)
+      cloud.setItem(String(params.key), String(params.value), (error, stored) => {
+        cb(error, stored as T | undefined)
+      })
     })
   }
   if (method === 'getStorageValues') {
     return cloudCall<T>((cb) => {
-      cloud.getItems(params.keys as string[], cb)
+      cloud.getItems(params.keys as string[], (error, values) => {
+        cb(error, values as T | undefined)
+      })
     })
   }
   return { ok: false, error: `unsupported:${method}` }
