@@ -18,7 +18,7 @@ export class ChainExplosionEvent extends BaseEvent {
 
   private pickTimer = 0
   /** Remaining explosions allowed in the current cascade. */
-  private cascadeLeft = EVENTS.chainExplosion.maxChainExplosions
+  private cascadeLeft: number = EVENTS.chainExplosion.maxChainExplosions
   private warnAccum = 0
   private vignette = 0
 
