@@ -23,10 +23,6 @@ export class Orb {
   /** Shockwave knockback on base position. */
   private knockVx = 0
   private knockVy = 0
-  /** Radar event — 1 while arena is dimmed. */
-  radarDim = 0
-  /** Radar event — 0→1 highlight after a pulse detects this orb. */
-  radarReveal = 0
 
   constructor(x: number, y: number, kind: OrbKind = 'normal') {
     this.x = x
@@ -56,8 +52,6 @@ export class Orb {
     this.fleeVy = 0
     this.knockVx = 0
     this.knockVy = 0
-    this.radarReveal = 0
-    // radarDim is owned by RadarEvent each frame
     if (kind === 'prize') {
       this.radius = PRIZE_ORB.radius
       this.hitRadius = PRIZE_ORB.hitRadius
@@ -298,8 +292,12 @@ export class Orb {
 
   get alpha(): number {
     let a = clamp(this.spawnProgress / 0.35, 0, 1)
-    if (this.kind === 'prize' && this.life < 2.2) {
-      a *= 0.35 + 0.65 * Math.abs(Math.sin(this.time * 9))
+    if (this.kind === 'prize' && this.life < 2.0) {
+      // Blink faster as expiry nears; hard on/off so it reads clearly.
+      const urgency = 1 - clamp(this.life / 2.0, 0, 1)
+      const hz = 3 + urgency * 9
+      const blink = Math.sin(this.time * Math.PI * 2 * hz) > 0 ? 1 : 0.12
+      a *= blink
     }
     return a
   }

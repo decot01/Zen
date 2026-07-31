@@ -3,11 +3,8 @@ import type { Enemy } from '../Enemy'
 import type { Orb } from '../Orb'
 import type { ParticleSystem } from '../Particles'
 import type { Player } from '../Player'
-import type { RadarVisual } from './RadarEvent'
 import type { ShockwaveVisual } from './ShockwaveEvent'
 import type { SniperVisual } from './SniperEvent'
-import type { CrossfireVisual } from './CrossfireEvent'
-import type { BulletHellVisual } from './BulletHellEvent'
 
 export type EventId =
   | 'energyWalls'
@@ -15,10 +12,6 @@ export type EventId =
   | 'berserk'
   | 'chainExplosion'
   | 'sniper'
-  | 'phaseShift'
-  | 'radar'
-  | 'crossfire'
-  | 'bulletHell'
 
 export const EVENT_LABELS: Record<EventId, string> = {
   energyWalls: 'Energy Walls',
@@ -26,10 +19,6 @@ export const EVENT_LABELS: Record<EventId, string> = {
   berserk: 'Berserk',
   chainExplosion: 'Chain Explosion',
   sniper: 'Sniper',
-  phaseShift: 'Phase Shift',
-  radar: 'Radar',
-  crossfire: 'Crossfire',
-  bulletHell: 'Bullet Hell',
 }
 
 export interface PlayBounds {
@@ -91,10 +80,4 @@ export interface EventVisuals {
     vignette: number
   } | null
   sniper: SniperVisual | null
-  phaseShift: {
-    intensity: number
-  } | null
-  radar: RadarVisual | null
-  crossfire: CrossfireVisual | null
-  bulletHell: BulletHellVisual | null
 }

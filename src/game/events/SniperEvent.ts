@@ -11,7 +11,6 @@ export interface SniperVisual {
     y: number
     appear: number
     edge: SniperDrone['edge']
-    tint: 'red' | 'yellow'
   }[]
   lasers: {
     line: LaserLine
@@ -20,7 +19,6 @@ export interface SniperVisual {
     trackingProgress: number
     lockProgress: number
     fireFlash: number
-    tint: 'red' | 'yellow'
   }[]
 }
 
@@ -52,7 +50,6 @@ export class SniperEvent extends BaseEvent {
         y: this.drone.y,
         appear: this.drone.appear,
         edge: this.drone.edge,
-        tint: this.drone.tint,
       })
       const laser = this.drone.laser
       if (laser.phase !== 'done') {
@@ -63,7 +60,6 @@ export class SniperEvent extends BaseEvent {
           trackingProgress: laser.trackingProgress,
           lockProgress: laser.lockProgress,
           fireFlash: laser.fireFlash,
-          tint: this.drone.tint,
         })
       }
     }

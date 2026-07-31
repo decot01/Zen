@@ -27,7 +27,11 @@ export class Player {
   /** When true, physics step skips attraction / walls. */
   motionLocked = false
 
-  private trail: TrailPoint[] = []
+  private readonly trailX = new Float32Array(PLAYER.trailLength)
+  private readonly trailY = new Float32Array(PLAYER.trailLength)
+  private trailCount = 0
+  private trailHead = 0
+  private readonly trailView: TrailPoint[] = []
   private trailAccum = 0
   private impactCooldown = 0
 
@@ -49,7 +53,8 @@ export class Player {
   }
 
   clearTrail(): void {
-    this.trail = []
+    this.trailCount = 0
+    this.trailHead = 0
     this.trailAccum = 0
   }
 
@@ -126,12 +131,13 @@ export class Player {
 
   private updateTrail(dt: number): void {
     this.trailAccum += length(this.vx, this.vy) * dt
+    const cap = PLAYER.trailLength
     while (this.trailAccum >= PLAYER.trailSpacing) {
       this.trailAccum -= PLAYER.trailSpacing
-      this.trail.push({ x: this.x, y: this.y })
-      if (this.trail.length > PLAYER.trailLength) {
-        this.trail.shift()
-      }
+      this.trailX[this.trailHead] = this.x
+      this.trailY[this.trailHead] = this.y
+      this.trailHead = (this.trailHead + 1) % cap
+      if (this.trailCount < cap) this.trailCount++
     }
   }
 
@@ -153,8 +159,23 @@ export class Player {
     return 1 + Math.sin(this.time * PLAYER.pulseSpeed) * PLAYER.pulseAmount
   }
 
+  /** Oldest → newest trail samples (reuses internal objects). */
   getTrail(): readonly TrailPoint[] {
-    return this.trail
+    const n = this.trailCount
+    const cap = PLAYER.trailLength
+    const start = (this.trailHead - n + cap) % cap
+    for (let i = 0; i < n; i++) {
+      const idx = (start + i) % cap
+      let p = this.trailView[i]
+      if (!p) {
+        p = { x: 0, y: 0 }
+        this.trailView[i] = p
+      }
+      p.x = this.trailX[idx]!
+      p.y = this.trailY[idx]!
+    }
+    this.trailView.length = n
+    return this.trailView
   }
 
   scaleDifficulty(speedMultiplier: number): void {

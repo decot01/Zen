@@ -12,10 +12,14 @@ export class Renderer {
   private width = 0
   private height = 0
   private dpr = 1
+  private ambientCanvas: HTMLCanvasElement | null = null
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas
-    const ctx = canvas.getContext('2d', { alpha: false })
+    const ctx = canvas.getContext('2d', {
+      alpha: false,
+      desynchronized: true,
+    })
     if (!ctx) throw new Error('Canvas 2D context unavailable')
     this.ctx = ctx
   }
@@ -29,6 +33,7 @@ export class Renderer {
     this.canvas.style.width = `${cssWidth}px`
     this.canvas.style.height = `${cssHeight}px`
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+    this.rebuildAmbient()
   }
 
   getSize(): { width: number; height: number } {
@@ -60,22 +65,12 @@ export class Renderer {
 
     this.drawAmbient()
 
-    if (events?.radar) {
-      this.drawRadarDarkness(events.radar)
-    }
-
     if (events?.shockwave) {
       this.drawShockwaveEvent(events.shockwave)
     }
 
     if (events?.sniper) {
       this.drawSniperLasers(events.sniper)
-    }
-    if (events?.crossfire) {
-      this.drawSniperLasers(events.crossfire, 1.2)
-    }
-    if (events?.bulletHell) {
-      this.drawSniperLasers(events.bulletHell, 1.25)
     }
 
     for (const orb of orbs) {
@@ -88,12 +83,6 @@ export class Renderer {
 
     if (events?.sniper) {
       this.drawSniperDrones(events.sniper)
-    }
-    if (events?.crossfire) {
-      this.drawSniperDrones(events.crossfire)
-    }
-    if (events?.bulletHell) {
-      this.drawSniperDrones(events.bulletHell)
     }
 
     // Soft blackout of the playfield (orbs/enemies) while death FX keep playing.
@@ -115,11 +104,6 @@ export class Renderer {
     if (particles.flash > 0) {
       ctx.fillStyle = `rgba(250, 250, 250, ${0.22 * particles.flash})`
       ctx.fillRect(-shake.x, -shake.y, this.width, this.height)
-    }
-
-    // Radar pulse rings (darkness is drawn earlier with entities).
-    if (events?.radar) {
-      this.drawRadarPulses(events.radar)
     }
 
     if (options.dimmed) {
@@ -204,10 +188,6 @@ export class Renderer {
     ctx.lineWidth = t * (1 + hit * 0.35)
     ctx.lineJoin = 'miter'
     ctx.miterLimit = 2
-    if (hit > 0.05) {
-      ctx.shadowColor = `rgba(255, 255, 255, ${0.14 * hit * a})`
-      ctx.shadowBlur = 2 + hit * 4
-    }
     ctx.beginPath()
     ctx.moveTo(left, top)
     ctx.lineTo(right, top)
@@ -256,9 +236,7 @@ export class Renderer {
   }
 
   private drawSniperLasers(
-    sn: NonNullable<
-      EventVisuals['sniper'] | EventVisuals['crossfire'] | EventVisuals['bulletHell']
-    >,
+    sn: NonNullable<EventVisuals['sniper']>,
     glowMul = 1,
   ): void {
     const ctx = this.ctx
@@ -270,45 +248,31 @@ export class Renderer {
       const pulse = laser.warningPulse
       const locked = laser.phase === 'locked'
       const firing = laser.phase === 'firing'
-      const yellow = laser.tint === 'yellow'
       const core = firing
         ? 0.95
         : locked
           ? 0.55 + pulse * 0.35
           : 0.25 + pulse * 0.35
-      const glow =
-        (firing ? 14 + laser.fireFlash * 18 : locked ? 8 : 5) *
-        glowMul *
-        (yellow ? 1.25 : 1)
 
       ctx.save()
       ctx.globalAlpha = a * (0.55 + core * 0.45)
+      ctx.lineCap = 'round'
 
+      // Soft beam via wide translucent stroke (no shadowBlur — huge at 120 Hz).
       ctx.strokeStyle = firing
-        ? yellow
-          ? `rgba(255, 245, 180, ${0.4 + laser.fireFlash * 0.5})`
-          : `rgba(255, 220, 220, ${0.35 + laser.fireFlash * 0.5})`
-        : yellow
-          ? `rgba(250, 200, 40, ${0.25 + pulse * 0.3})`
-          : `rgba(255, 80, 80, ${0.2 + pulse * 0.25})`
-      ctx.lineWidth = firing ? 10 * glowMul * (yellow ? 1.1 : 1) : locked ? 6 : 4
-      ctx.shadowColor = yellow ? '#fbbf24' : '#ff3333'
-      ctx.shadowBlur = glow
+        ? `rgba(255, 120, 120, ${0.22 + laser.fireFlash * 0.35})`
+        : `rgba(255, 60, 60, ${0.12 + pulse * 0.18})`
+      ctx.lineWidth = (firing ? 14 : locked ? 9 : 6) * glowMul
       ctx.beginPath()
       ctx.moveTo(x1, y1)
       ctx.lineTo(x2, y2)
       ctx.stroke()
 
-      ctx.shadowBlur = glow * 0.4
       ctx.strokeStyle = firing
         ? '#ffffff'
-        : yellow
-          ? locked
-            ? `rgba(255, 230, 120, ${0.75 + pulse * 0.25})`
-            : `rgba(250, 204, 70, ${0.45 + pulse * 0.4})`
-          : locked
-            ? `rgba(255, 180, 180, ${0.7 + pulse * 0.3})`
-            : `rgba(255, 120, 120, ${0.4 + pulse * 0.4})`
+        : locked
+          ? `rgba(255, 180, 180, ${0.7 + pulse * 0.3})`
+          : `rgba(255, 120, 120, ${0.4 + pulse * 0.4})`
       ctx.lineWidth = firing ? 2.5 + laser.fireFlash * 2 : locked ? 1.75 : 1.15
       ctx.beginPath()
       ctx.moveTo(x1, y1)
@@ -319,26 +283,27 @@ export class Renderer {
     }
   }
 
-  private drawSniperDrones(
-    sn: NonNullable<
-      EventVisuals['sniper'] | EventVisuals['crossfire'] | EventVisuals['bulletHell']
-    >,
-  ): void {
+  private drawSniperDrones(sn: NonNullable<EventVisuals['sniper']>): void {
     const ctx = this.ctx
     const a = Math.min(1, sn.intensity)
     const size = EVENTS.sniper.droneSize
 
     for (const d of sn.drones) {
       if (d.appear < 0.02) continue
-      const yellow = d.tint === 'yellow'
       ctx.save()
       ctx.translate(d.x, d.y)
       ctx.globalAlpha = a * d.appear
 
-      ctx.shadowColor = yellow ? '#f59e0b' : '#ff2222'
-      ctx.shadowBlur = yellow ? 14 : 10
+      const halo = ctx.createRadialGradient(0, 0, 0, 0, 0, size * 2.2)
+      halo.addColorStop(0, 'rgba(255, 40, 40, 0.45)')
+      halo.addColorStop(1, 'rgba(255, 40, 40, 0)')
+      ctx.fillStyle = halo
+      ctx.beginPath()
+      ctx.arc(0, 0, size * 2.2, 0, Math.PI * 2)
+      ctx.fill()
+
       ctx.fillStyle = '#1a1a1a'
-      ctx.strokeStyle = yellow ? '#fbbf24' : '#ff5555'
+      ctx.strokeStyle = '#ff5555'
       ctx.lineWidth = 1.5
       ctx.beginPath()
       ctx.moveTo(0, -size)
@@ -349,14 +314,11 @@ export class Renderer {
       ctx.fill()
       ctx.stroke()
 
-      ctx.shadowBlur = yellow ? 16 : 12
-      ctx.shadowColor = yellow ? '#facc15' : '#ff0000'
-      ctx.fillStyle = yellow ? '#fbbf24' : '#ff3333'
+      ctx.fillStyle = '#ff3333'
       ctx.beginPath()
       ctx.arc(0, 0, size * 0.28, 0, Math.PI * 2)
       ctx.fill()
       ctx.fillStyle = '#ffffff'
-      ctx.shadowBlur = 0
       ctx.beginPath()
       ctx.arc(0, 0, size * 0.1, 0, Math.PI * 2)
       ctx.fill()
@@ -365,81 +327,40 @@ export class Renderer {
     }
   }
 
-  private drawRadarDarkness(
-    radar: NonNullable<EventVisuals['radar']>,
-  ): void {
-    const ctx = this.ctx
-    const dark = radar.darkness
-    if (dark < 0.02) return
-
-    const px = radar.playerX
-    const py = radar.playerY
-    const maxR = Math.hypot(this.width, this.height)
-    const hole = PLAYER.radius * 2.4
-
-    ctx.save()
-    const g = ctx.createRadialGradient(px, py, hole * 0.25, px, py, maxR)
-    g.addColorStop(0, 'rgba(0, 0, 0, 0)')
-    g.addColorStop(hole / maxR, `rgba(0, 0, 0, ${dark * 0.45})`)
-    g.addColorStop(Math.min(0.55, (hole * 3) / maxR), `rgba(0, 0, 0, ${dark * 0.92})`)
-    g.addColorStop(1, `rgba(0, 0, 0, ${dark})`)
-    ctx.fillStyle = g
-    ctx.fillRect(0, 0, this.width, this.height)
-    ctx.restore()
-  }
-
-  private drawRadarPulses(
-    radar: NonNullable<EventVisuals['radar']>,
-  ): void {
-    const ctx = this.ctx
-    const a = Math.min(1, radar.intensity)
-    if (a < 0.02 || radar.pulses.length === 0) return
-
-    ctx.save()
-    for (const pulse of radar.pulses) {
-      const alpha = pulse.alpha * a
-      if (alpha < 0.02) continue
-
-      // Soft green wash behind the front
-      const band = ctx.createRadialGradient(
-        pulse.x,
-        pulse.y,
-        Math.max(0, pulse.radius - 22),
-        pulse.x,
-        pulse.y,
-        pulse.radius + 2,
-      )
-      band.addColorStop(0, 'rgba(80, 220, 120, 0)')
-      band.addColorStop(0.7, `rgba(70, 210, 110, ${0.05 * alpha})`)
-      band.addColorStop(1, 'rgba(80, 220, 120, 0)')
-      ctx.globalAlpha = 1
-      ctx.fillStyle = band
-      ctx.beginPath()
-      ctx.arc(pulse.x, pulse.y, pulse.radius + 2, 0, Math.PI * 2)
-      ctx.fill()
-
-      ctx.globalAlpha = alpha * 0.7
-      ctx.strokeStyle = '#4ade80'
-      ctx.lineWidth = 1.8
-      ctx.shadowColor = '#22c55e'
-      ctx.shadowBlur = 10
-      ctx.beginPath()
-      ctx.arc(pulse.x, pulse.y, pulse.radius, 0, Math.PI * 2)
-      ctx.stroke()
-
-      ctx.globalAlpha = alpha * 0.28
-      ctx.strokeStyle = '#bbf7d0'
-      ctx.lineWidth = 1
-      ctx.shadowBlur = 4
-      ctx.beginPath()
-      ctx.arc(pulse.x, pulse.y, Math.max(1, pulse.radius - 5), 0, Math.PI * 2)
-      ctx.stroke()
-      ctx.shadowBlur = 0
+  private rebuildAmbient(): void {
+    if (this.width < 1 || this.height < 1) {
+      this.ambientCanvas = null
+      return
     }
-    ctx.restore()
+    const c = document.createElement('canvas')
+    c.width = Math.max(1, Math.floor(this.width * this.dpr))
+    c.height = Math.max(1, Math.floor(this.height * this.dpr))
+    const gctx = c.getContext('2d')
+    if (!gctx) {
+      this.ambientCanvas = null
+      return
+    }
+    gctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0)
+    const g = gctx.createRadialGradient(
+      this.width * 0.5,
+      this.height * 0.4,
+      0,
+      this.width * 0.5,
+      this.height * 0.5,
+      Math.max(this.width, this.height) * 0.65,
+    )
+    g.addColorStop(0, 'rgba(250, 250, 250, 0.03)')
+    g.addColorStop(1, 'rgba(0, 0, 0, 0)')
+    gctx.fillStyle = g
+    gctx.fillRect(0, 0, this.width, this.height)
+    this.ambientCanvas = c
   }
 
   private drawAmbient(): void {
+    if (this.ambientCanvas) {
+      this.ctx.drawImage(this.ambientCanvas, 0, 0, this.width, this.height)
+      return
+    }
     const ctx = this.ctx
     const g = ctx.createRadialGradient(
       this.width * 0.5,
@@ -459,15 +380,17 @@ export class Renderer {
     const ctx = this.ctx
     const trail = player.getTrail()
     const n = trail.length
+    if (n === 0) return
+    ctx.fillStyle = 'rgba(250, 250, 250, 1)'
     for (let i = 0; i < n; i++) {
       const t = (i + 1) / n
       const p = trail[i]!
-      const r = player.radius * 0.35 * t
+      ctx.globalAlpha = 0.14 * t
       ctx.beginPath()
-      ctx.arc(p.x, p.y, r, 0, Math.PI * 2)
-      ctx.fillStyle = `rgba(250, 250, 250, ${0.14 * t})`
+      ctx.arc(p.x, p.y, player.radius * 0.35 * t, 0, Math.PI * 2)
       ctx.fill()
     }
+    ctx.globalAlpha = 1
   }
 
   private drawPlayer(player: Player): void {
@@ -481,8 +404,6 @@ export class Renderer {
     ctx.rotate(player.heading)
     ctx.scale(1 + stretch, 1 - stretch * 0.55)
 
-    // Soft canvas glow — Apple Intelligence palette.
-    // Base a bit stronger; shimmer + bloom ramp with combo.
     const palette = [
       [0xbc, 0x82, 0xf3],
       [0xf5, 0xb9, 0xea],
@@ -502,25 +423,21 @@ export class Renderer {
     const rr = Math.round(a[0] + (b[0] - a[0]) * f)
     const gg = Math.round(a[1] + (b[1] - a[1]) * f)
     const bb = Math.round(a[2] + (b[2] - a[2]) * f)
-    const dprScale = this.dpr > 1.5 ? 0.95 : 0.72
-    const blurScale = 1.2 + comboT * 0.28
+    const glowR = r + PLAYER.glowBlur * (0.55 + comboT * 0.2)
 
-    ctx.shadowColor = `rgb(${rr}, ${gg}, ${bb})`
-    ctx.shadowBlur = PLAYER.glowBlur * dprScale * blurScale
+    const halo = ctx.createRadialGradient(0, 0, r * 0.35, 0, 0, glowR)
+    halo.addColorStop(0, `rgba(${rr}, ${gg}, ${bb}, ${0.55 + comboT * 0.25})`)
+    halo.addColorStop(0.55, `rgba(${rr}, ${gg}, ${bb}, ${0.18 + comboT * 0.12})`)
+    halo.addColorStop(1, `rgba(${rr}, ${gg}, ${bb}, 0)`)
+    ctx.fillStyle = halo
+    ctx.beginPath()
+    ctx.arc(0, 0, glowR, 0, Math.PI * 2)
+    ctx.fill()
 
     ctx.beginPath()
     ctx.arc(0, 0, r, 0, Math.PI * 2)
     ctx.fillStyle = COLORS.white
     ctx.fill()
-
-    // Subtle extra wash at higher combo.
-    if (comboT > 0.15) {
-      ctx.shadowBlur = PLAYER.glowBlur * dprScale * (0.55 + comboT * 0.35)
-      ctx.shadowColor = `rgba(${rr}, ${gg}, ${bb}, ${0.2 + comboT * 0.2})`
-      ctx.beginPath()
-      ctx.arc(0, 0, r, 0, Math.PI * 2)
-      ctx.fill()
-    }
 
     ctx.restore()
   }
@@ -529,10 +446,6 @@ export class Renderer {
     const ctx = this.ctx
     const scale = orb.scale
     const r = Math.max(0.5, orb.radius * scale)
-    const dim = orb.radarDim
-    const rev = orb.radarReveal
-    // Between scans: fully hidden (no silhouettes — harder than Blackout lamp).
-    if (dim > 0.05 && rev < 0.08) return
     const alpha = orb.alpha
     const prize = orb.kind === 'prize'
 
@@ -541,7 +454,6 @@ export class Renderer {
 
     const ring = orb.appearRing
     if (ring) {
-      ctx.shadowBlur = 0
       ctx.beginPath()
       ctx.arc(0, 0, ring.radius, 0, Math.PI * 2)
       ctx.strokeStyle = `rgba(250, 250, 250, ${ring.alpha})`
@@ -587,21 +499,6 @@ export class Renderer {
       ctx.fillStyle = `rgba(255, 255, 255, 0.45)`
       ctx.fill()
 
-      // Soft life ring
-      ctx.shadowBlur = 0
-      ctx.globalAlpha = alpha
-      ctx.beginPath()
-      ctx.arc(
-        0,
-        0,
-        r * 1.7,
-        -Math.PI / 2,
-        -Math.PI / 2 + Math.PI * 2 * orb.lifeRatio,
-      )
-      ctx.strokeStyle = `rgba(${rr}, ${gg}, ${bb}, ${0.55 * alpha})`
-      ctx.lineWidth = 1.5
-      ctx.stroke()
-
       // Core
       ctx.shadowColor = `rgb(${rr}, ${gg}, ${bb})`
       ctx.shadowBlur = PRIZE_ORB.glowBlur * 0.7 * dprScale
@@ -610,9 +507,8 @@ export class Renderer {
       ctx.arc(0, 0, r, 0, Math.PI * 2)
       ctx.fillStyle = '#FFFFFF'
       ctx.fill()
-    } else {
       ctx.shadowBlur = 0
-      ctx.shadowColor = 'rgba(255,255,255,0.85)'
+    } else {
       ctx.globalAlpha = alpha
       ctx.beginPath()
       ctx.arc(0, 0, r, 0, Math.PI * 2)
@@ -627,44 +523,39 @@ export class Renderer {
     const ctx = this.ctx
     const charging = enemy.charging
     const cp = enemy.chargeProgress
-    const phased = enemy.phaseAmount
-    const dim = enemy.radarDim
-    const rev = enemy.radarReveal
-    // Between scans: fully hidden (no silhouettes — harder than Blackout lamp).
-    if (dim > 0.05 && rev < 0.08) return
-    const scale = enemy.scale * enemy.pulse * (1 + phased * 0.06)
+    const scale = enemy.scale * enemy.pulse
     const r = enemy.radius * scale
     const alpha = enemy.alpha
     const glowMul = enemy.berserk
       ? EVENTS.berserk.glowMul
       : charging
         ? 1.4 + cp * 2.2
-        : phased > 0.05
-          ? 1.2 + phased * 1.4
-          : 1
+        : 1
     const flash =
       charging && Math.sin(enemy.age * (14 + cp * 22)) > 0.15 ? 1 : 0
-    const phaseGlow = phased > 0.05
 
     ctx.save()
     ctx.translate(enemy.x, enemy.y)
     ctx.globalAlpha = alpha
 
-    ctx.shadowColor = charging
+    const glowR = r + ENEMY.glowBlur * 0.55 * glowMul
+    const glowColor = charging
       ? flash
-        ? '#ffaaaa'
-        : '#ff3333'
-      : phaseGlow
-        ? '#8b5cf6'
-        : enemy.berserk
-          ? '#ff4444'
-          : enemy.armed
-            ? COLORS.white
-            : COLORS.danger
-    ctx.shadowBlur =
-      (enemy.armed || charging || phaseGlow
-        ? ENEMY.glowBlur * 0.7
-        : ENEMY.glowBlur * 0.35) * glowMul
+        ? '255, 170, 170'
+        : '255, 50, 50'
+      : enemy.berserk
+        ? '255, 68, 68'
+        : enemy.armed
+          ? '250, 250, 250'
+          : '115, 115, 115'
+    const glowA = enemy.armed || charging || enemy.berserk ? 0.45 : 0.22
+    const halo = ctx.createRadialGradient(0, 0, r * 0.4, 0, 0, glowR)
+    halo.addColorStop(0, `rgba(${glowColor}, ${glowA})`)
+    halo.addColorStop(1, `rgba(${glowColor}, 0)`)
+    ctx.fillStyle = halo
+    ctx.beginPath()
+    ctx.arc(0, 0, glowR, 0, Math.PI * 2)
+    ctx.fill()
 
     ctx.beginPath()
     ctx.arc(0, 0, r, 0, Math.PI * 2)
@@ -672,49 +563,31 @@ export class Renderer {
       ? flash
         ? '#7a2020'
         : '#4a1010'
-      : phaseGlow
-        ? `rgba(${Math.round(40 + phased * 20)}, ${Math.round(30 + phased * 40)}, ${Math.round(70 + phased * 80)}, ${0.35 + phased * 0.25})`
-        : enemy.berserk
-          ? '#5c1515'
-          : enemy.armed
-            ? COLORS.dangerDark
-            : 'rgba(63, 63, 70, 0.55)'
+      : enemy.berserk
+        ? '#5c1515'
+        : enemy.armed
+          ? COLORS.dangerDark
+          : 'rgba(63, 63, 70, 0.55)'
     ctx.fill()
 
-    ctx.shadowBlur = 0
-    ctx.lineWidth =
-      enemy.armed || enemy.berserk || charging || phaseGlow ? 2.2 : 1.5
+    ctx.lineWidth = enemy.armed || enemy.berserk || charging ? 2.2 : 1.5
     ctx.strokeStyle = charging
       ? flash
         ? '#ffffff'
         : '#ff6b6b'
-      : phaseGlow
-        ? `rgba(${Math.round(120 + phased * 80)}, ${Math.round(140 + phased * 60)}, 250, ${0.55 + phased * 0.4})`
-        : enemy.berserk
-          ? '#ff6b6b'
-          : enemy.armed
-            ? COLORS.white
-            : COLORS.danger
+      : enemy.berserk
+        ? '#ff6b6b'
+        : enemy.armed
+          ? COLORS.white
+          : COLORS.danger
     ctx.beginPath()
     ctx.arc(0, 0, r, 0, Math.PI * 2)
     ctx.stroke()
 
-    if (phased > 0.08 && phased < 0.95) {
-      const rip = 1.2 + (1 - Math.abs(phased - 0.5) * 2) * 0.35
-      ctx.globalAlpha = alpha * (0.25 + (1 - Math.abs(phased - 0.5) * 2) * 0.4)
-      ctx.strokeStyle = '#a78bfa'
-      ctx.lineWidth = 1.25
-      ctx.beginPath()
-      ctx.arc(0, 0, r * rip, 0, Math.PI * 2)
-      ctx.stroke()
-      ctx.globalAlpha = alpha
-    }
-
     ctx.beginPath()
     ctx.arc(0, 0, r * 0.28, 0, Math.PI * 2)
-    ctx.fillStyle = phaseGlow
-      ? `rgba(180, 200, 255, ${0.4 + phased * 0.5})`
-      : enemy.armed || enemy.berserk || charging
+    ctx.fillStyle =
+      enemy.armed || enemy.berserk || charging
         ? COLORS.white
         : 'rgba(250, 250, 250, 0.35)'
     ctx.fill()
@@ -728,7 +601,6 @@ export class Renderer {
       ctx.stroke()
     }
 
-    // Charge: blast-radius preview + accelerating blink.
     if (charging) {
       const blastR = EVENTS.chainExplosion.blastRadius
       const blinkHz = 2.5 + cp * 8
@@ -754,12 +626,14 @@ export class Renderer {
 
   private drawParticles(system: ParticleSystem): void {
     const ctx = this.ctx
-    for (const p of system.getParticles()) {
+    const particles = system.getParticles()
+    for (let i = 0; i < particles.length; i++) {
+      const p = particles[i]!
       const t = clamp(p.life / p.maxLife, 0, 1)
       ctx.globalAlpha = t
+      ctx.fillStyle = p.color
       ctx.beginPath()
       ctx.arc(p.x, p.y, p.size * (0.4 + t * 0.6), 0, Math.PI * 2)
-      ctx.fillStyle = p.color
       ctx.fill()
     }
     ctx.globalAlpha = 1
@@ -800,15 +674,12 @@ export class Renderer {
       ctx.translate(pop.x, y)
       ctx.scale(scale, scale)
       ctx.globalAlpha = clamp(alpha, 0, 1)
-      if (pop.label) {
-        ctx.font = `600 ${18 + (pop.combo - 1) * 2}px "Space Grotesk", "DM Sans", system-ui, sans-serif`
-        ctx.fillStyle = COLORS.text
-        ctx.fillText(pop.label, 0, 0)
-      } else {
-        ctx.font = `600 ${14 + (pop.combo - 1) * 2}px "Space Grotesk", "DM Sans", system-ui, sans-serif`
-        ctx.fillStyle = COLORS.text
-        ctx.fillText(`+${pop.value}`, 0, 0)
-      }
+      const size = pop.label
+        ? 18 + (pop.combo - 1) * 2
+        : 14 + (pop.combo - 1) * 2
+      ctx.font = `600 ${size}px "Space Grotesk", "DM Sans", system-ui, sans-serif`
+      ctx.fillStyle = COLORS.text
+      ctx.fillText(pop.label ?? `+${pop.value}`, 0, 0)
       ctx.restore()
     }
     ctx.globalAlpha = 1

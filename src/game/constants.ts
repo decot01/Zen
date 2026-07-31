@@ -12,9 +12,19 @@ export const COLORS = {
   flash: 'rgba(255, 255, 255, 0.5)',
 } as const
 
+/** Apple Intelligence / menu IntelGlow palette. */
+export const INTEL_PALETTE = [
+  '#BC82F3',
+  '#F5B9EA',
+  '#8D9FFF',
+  '#FF6778',
+  '#FFBA71',
+  '#C686FF',
+] as const
+
 export const PLAYER = {
   radius: 14,
-  glowBlur: 22,
+  glowBlur: 18,
   pulseSpeed: 2.2,
   pulseAmount: 0.06,
   attractStrength: 2100,
@@ -22,8 +32,8 @@ export const PLAYER = {
   damping: 3.1,
   releaseDamping: 0.95,
   wallBounce: 0.62,
-  trailLength: 22,
-  trailSpacing: 1.8,
+  trailLength: 16,
+  trailSpacing: 2.2,
   stretchMax: 0.28,
   stretchSpeedRef: 420,
   comboGlowBoost: 0.12,
@@ -49,7 +59,7 @@ export const WHITE_ORB = {
 
 export const ENEMY = {
   radius: 13,
-  glowBlur: 12,
+  glowBlur: 10,
   armDuration: 0.7,
   spawnAlpha: 0.4,
   initialCount: 3,
@@ -98,7 +108,7 @@ export const PRIZE_ORB = {
   fleeRange: 210,
   /** Extra clearance around enemies while steering. */
   hazardPadding: 56,
-  glowBlur: 28,
+  glowBlur: 22,
 } as const
 
 export const COMBO_FX = {
@@ -155,8 +165,13 @@ export const SPAWN = {
 } as const
 
 export const LOOP = {
+  /** Spike clamp only — loop is display-synced (60/120/144 Hz via rAF). */
   maxDelta: 1 / 30,
   uiSnapshotHz: 12,
+  /** Cap canvas backing-store DPR to keep fill-rate viable at 120 Hz. */
+  maxDpr: 2,
+  /** Menu / game over redraw rate when the board is static. */
+  idleRenderHz: 24,
 } as const
 
 export const SCORE_POPUP = {
@@ -190,17 +205,17 @@ export const EVENTS = {
   },
   shockwave: {
     unlockStage: 2,
-    duration: 12,
-    intervalMin: 2.5,
-    intervalMax: 3.0,
-    maxWaves: 4,
+    duration: 11,
+    intervalMin: 3.4,
+    intervalMax: 4.2,
+    maxWaves: 3,
     /** Thickness of the energy band. */
-    bandWidth: 42,
+    bandWidth: 30,
     /** Seconds for a wave to cross the arena. */
-    travelDuration: 1.4,
-    playerImpulse: 1180,
-    playerMaxSpeed: 1020,
-    knockDecay: 3.8,
+    travelDuration: 1.9,
+    playerImpulse: 620,
+    playerMaxSpeed: 620,
+    knockDecay: 4.8,
   },
   berserk: {
     unlockStage: 2,
@@ -241,60 +256,5 @@ export const EVENTS = {
     droneMargin: 28,
     droneSize: 10,
     leaveDuration: 0.35,
-  },
-  crossfire: {
-    /** Disabled — keep code, exclude from schedule. */
-    enabled: false,
-    unlockStage: 6,
-    duration: 12,
-    maxWaves: 7,
-    /** Warning total ≈ track + lock = 1.5s. */
-    trackDuration: 0.9,
-    lockDuration: 0.6,
-    intervalEarly: 2.35,
-    intervalLate: 1.5,
-  },
-  bulletHell: {
-    /** Disabled — keep code, exclude from schedule. */
-    enabled: false,
-    unlockStage: 8,
-    duration: 15,
-    maxWaves: 7,
-    /** Red crossfire warning ≈ 1.5s. */
-    trackDuration: 0.9,
-    lockDuration: 0.6,
-    intervalEarly: 2.2,
-    intervalLate: 1.45,
-    /** Yellow execution laser — shorter warn. */
-    yellowTrack: 0.45,
-    yellowLock: 0.4,
-    yellowPredict: 0.28,
-    yellowCooldown: 3,
-    maxYellow: 5,
-  },
-  phaseShift: {
-    /** Disabled — keep code, exclude from schedule. */
-    enabled: false,
-    unlockStage: 4,
-    duration: 15,
-    phaseDuration: 2,
-    interval: 2,
-    /** Exact share of armed enemies that phase each wave. */
-    fraction: 0.5,
-    minLethal: 1,
-    particleInterval: 0.055,
-  },
-  radar: {
-    /** Disabled — keep code, exclude from schedule. */
-    enabled: false,
-    unlockStage: 5,
-    duration: 15,
-    interval: 3.25,
-    maxPulses: 5,
-    revealDuration: 1.2,
-    /** Seconds for a pulse to cross the arena. */
-    pulseTravel: 1.15,
-    /** Deep arena darken — no local lamp. */
-    maxDarkness: 0.88,
   },
 } as const

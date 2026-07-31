@@ -1,3 +1,4 @@
+import { LOOP } from '@/game/constants'
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { Game, type GameSnapshot } from '@/game/Game'
 import type { GameMode } from '@/game/mode'
@@ -125,7 +126,9 @@ export function useGame() {
 
     const resize = () => {
       const rect = container.getBoundingClientRect()
-      const dpr = Math.min(window.devicePixelRatio || 1, 2.5)
+      const raw = window.devicePixelRatio || 1
+      // Cap DPR for high-refresh / high-DPI fill-rate (120 Hz phones).
+      const dpr = Math.min(raw, LOOP.maxDpr)
       game.resize(rect.width, rect.height, dpr)
     }
 

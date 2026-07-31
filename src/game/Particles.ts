@@ -191,34 +191,10 @@ export class ParticleSystem {
     p.alive = true
     this.active.push(p)
     if (this.active.length > PARTICLES.maxCount) {
-      const old = this.active.shift()
-      if (old) this.release(old)
-    }
-  }
-
-  /** Soft green sparks along a radar wave. */
-  emitRadarRing(x: number, y: number, radius: number, count = 6): void {
-    const room = PARTICLES.maxCount - this.active.length
-    const n = Math.min(count, Math.max(0, room))
-    for (let i = 0; i < n; i++) {
-      const angle = (Math.PI * 2 * i) / n + randomRange(-0.15, 0.15)
-      const ox = Math.cos(angle)
-      const oy = Math.sin(angle)
-      const p = this.acquire()
-      p.x = x + ox * radius
-      p.y = y + oy * radius
-      p.vx = ox * randomRange(12, 40)
-      p.vy = oy * randomRange(12, 40)
-      p.maxLife = randomRange(0.16, 0.32)
-      p.life = p.maxLife
-      p.size = randomRange(1.2, 2.6)
-      p.color =
-        Math.random() > 0.4
-          ? 'rgba(74, 222, 128, 0.9)'
-          : 'rgba(187, 247, 208, 0.85)'
-      p.kind = 'combo'
-      p.alive = true
-      this.active.push(p)
+      const old = this.active[0]!
+      const last = this.active.pop()!
+      if (this.active.length > 0) this.active[0] = last
+      this.release(old)
     }
   }
 
@@ -260,7 +236,8 @@ export class ParticleSystem {
       const p = this.active[i]!
       p.life -= dt
       if (p.life <= 0) {
-        this.active.splice(i, 1)
+        const last = this.active.pop()!
+        if (i < this.active.length) this.active[i] = last
         this.release(p)
         continue
       }
@@ -276,7 +253,8 @@ export class ParticleSystem {
       s.age += dt
       if (s.age >= s.duration) {
         s.alive = false
-        this.shockwaves.splice(i, 1)
+        const last = this.shockwaves.pop()!
+        if (i < this.shockwaves.length) this.shockwaves[i] = last
       }
     }
 
@@ -285,7 +263,8 @@ export class ParticleSystem {
       pop.age += dt
       if (pop.age >= pop.life) {
         pop.alive = false
-        this.popups.splice(i, 1)
+        const last = this.popups.pop()!
+        if (i < this.popups.length) this.popups[i] = last
       }
     }
 

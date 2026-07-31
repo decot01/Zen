@@ -2,9 +2,7 @@ import { EVENTS } from '../constants'
 import { randomRange } from '@/utils/random'
 import { BaseEvent } from './BaseEvent'
 import { BerserkEvent } from './BerserkEvent'
-import { BulletHellEvent } from './BulletHellEvent'
 import { ChainExplosionEvent } from './ChainExplosionEvent'
-import { CrossfireEvent } from './CrossfireEvent'
 import { EnergyWallsEvent } from './EnergyWallsEvent'
 import {
   EVENT_LABELS,
@@ -12,8 +10,6 @@ import {
   type EventId,
   type EventVisuals,
 } from './EventContext'
-import { PhaseShiftEvent } from './PhaseShiftEvent'
-import { RadarEvent } from './RadarEvent'
 import { ShockwaveEvent } from './ShockwaveEvent'
 import { SniperEvent } from './SniperEvent'
 import type { Orb } from '../Orb'
@@ -26,10 +22,6 @@ const FACTORIES: Record<EventId, Factory> = {
   berserk: () => new BerserkEvent(),
   chainExplosion: () => new ChainExplosionEvent(),
   sniper: () => new SniperEvent(),
-  phaseShift: () => new PhaseShiftEvent(),
-  radar: () => new RadarEvent(),
-  crossfire: () => new CrossfireEvent(),
-  bulletHell: () => new BulletHellEvent(),
 }
 
 const UNLOCK: Record<EventId, number> = {
@@ -38,10 +30,6 @@ const UNLOCK: Record<EventId, number> = {
   berserk: EVENTS.berserk.unlockStage,
   chainExplosion: EVENTS.chainExplosion.unlockStage,
   sniper: EVENTS.sniper.unlockStage,
-  phaseShift: EVENTS.phaseShift.unlockStage,
-  radar: EVENTS.radar.unlockStage,
-  crossfire: EVENTS.crossfire.unlockStage,
-  bulletHell: EVENTS.bulletHell.unlockStage,
 }
 
 /** Schedules timed world events independent of difficulty ticks. */
@@ -69,11 +57,6 @@ export class EventManager {
 
   get fade(): number {
     return this.active && !this.active.done ? this.active.fade : 0
-  }
-
-  /** Radar — no new enemies while visibility is limited. */
-  get blocksEnemySpawns(): boolean {
-    return this.activeId === 'radar'
   }
 
   forceEnd(ctx: EventContext): void {
@@ -156,22 +139,6 @@ export class EventManager {
       id === 'sniper' && this.active instanceof SniperEvent
         ? this.active.getVisuals(fade, ctx.width, ctx.height)
         : null
-    const phaseShift =
-      id === 'phaseShift' && this.active instanceof PhaseShiftEvent
-        ? { intensity: fade }
-        : null
-    const radar =
-      id === 'radar' && this.active instanceof RadarEvent
-        ? this.active.getVisuals(fade, ctx)
-        : null
-    const crossfire =
-      id === 'crossfire' && this.active instanceof CrossfireEvent
-        ? this.active.getVisuals(fade, ctx.width, ctx.height)
-        : null
-    const bulletHell =
-      id === 'bulletHell' && this.active instanceof BulletHellEvent
-        ? this.active.getVisuals(fade, ctx.width, ctx.height)
-        : null
 
     return {
       activeEvent: id,
@@ -181,18 +148,12 @@ export class EventManager {
       shockwave,
       chainExplosion,
       sniper,
-      phaseShift,
-      radar,
-      crossfire,
-      bulletHell,
     }
   }
 
   private unlockedIds(stage: number): EventId[] {
-    return (Object.keys(UNLOCK) as EventId[]).filter((id) => {
-      if (stage < UNLOCK[id]) return false
-      const cfg = EVENTS[id] as { enabled?: boolean }
-      return cfg.enabled !== false
-    })
+    return (Object.keys(UNLOCK) as EventId[]).filter(
+      (id) => stage >= UNLOCK[id],
+    )
   }
 }

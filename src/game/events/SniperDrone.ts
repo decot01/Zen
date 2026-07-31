@@ -3,7 +3,6 @@ import { clamp } from '@/utils/math'
 import { LaserAttack, type LaserTiming } from './LaserAttack'
 
 export type DroneEdge = 'top' | 'bottom' | 'left' | 'right'
-export type LaserTint = 'red' | 'yellow'
 
 /**
  * Small red-eyed drone that appears outside the arena and owns one LaserAttack.
@@ -13,7 +12,6 @@ export class SniperDrone {
   y: number
   edge: DroneEdge
   laser: LaserAttack
-  tint: LaserTint
   /** 0→1 enter, then leave after shot. */
   appear = 0
   leaving = false
@@ -28,12 +26,10 @@ export class SniperDrone {
     aimX: number,
     aimY: number,
     timing?: LaserTiming,
-    tint: LaserTint = 'red',
   ) {
     this.x = x
     this.y = y
     this.edge = edge
-    this.tint = tint
     this.laser = new LaserAttack(x, y, aimX, aimY, timing)
   }
 
@@ -57,7 +53,6 @@ export class SniperDrone {
     aimX: number,
     aimY: number,
     timing?: LaserTiming,
-    tint: LaserTint = 'red',
   ): SniperDrone {
     const m = EVENTS.sniper.droneMargin
     const pad = 0.12
@@ -76,7 +71,7 @@ export class SniperDrone {
       x = width + m
       y = clamp(aimY, height * pad, height * (1 - pad))
     }
-    return new SniperDrone(x, y, edge, aimX, aimY, timing, tint)
+    return new SniperDrone(x, y, edge, aimX, aimY, timing)
   }
 
   update(
@@ -89,42 +84,22 @@ export class SniperDrone {
     if (this.done) return { justLocked: false, justFired: false }
 
     if (!this.leaving) {
-      this.appear = clamp(this.appear + dt * this.enterSpeed, 0, 1)
+      this.appear = Math.min(1, this.appear + dt * this.enterSpeed)
     }
 
-    const signals = this.laser.update(
-      dt,
-      playerX,
-      playerY,
-      playerVx,
-      playerVy,
-    )
+    const result = this.laser.update(dt, playerX, playerY, playerVx, playerVy)
 
-    if (this.laser.phase === 'done' && !this.leaving) {
+    if (result.justFired) {
       this.leaving = true
-      this.leaveAge = 0
     }
 
     if (this.leaving) {
       this.leaveAge += dt
       const t = this.leaveAge / EVENTS.sniper.leaveDuration
-      this.appear = clamp(1 - t, 0, 1)
-      // Drift outward.
-      const out =
-        this.edge === 'top'
-          ? { x: 0, y: -1 }
-          : this.edge === 'bottom'
-            ? { x: 0, y: 1 }
-            : this.edge === 'left'
-              ? { x: -1, y: 0 }
-              : { x: 1, y: 0 }
-      this.x += out.x * 90 * dt
-      this.y += out.y * 90 * dt
-      this.laser.originX = this.x
-      this.laser.originY = this.y
+      this.appear = Math.max(0, 1 - t)
       if (t >= 1) this.done = true
     }
 
-    return signals
+    return result
   }
 }

@@ -49,6 +49,7 @@ export default function App() {
         <canvas
           ref={canvasRef}
           className="block h-full w-full touch-none"
+          style={{ contain: 'strict' }}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}

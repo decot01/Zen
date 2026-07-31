@@ -15,17 +15,9 @@ export class Enemy {
    * Chain Explosion charge: null = idle, 0→1 while charging toward blast.
    */
   chargeT: number | null = null
-  /** Phase Shift — harmless while fully/near phased. */
-  phased = false
-  /** 0→1 visual blend toward phased look. */
-  phaseAmount = 0
   /** Shockwave knockback velocity (decays). */
   knockVx = 0
   knockVy = 0
-  /** Radar event — 1 while arena is dimmed. */
-  radarDim = 0
-  /** Radar event — 0→1 highlight after a pulse detects this enemy. */
-  radarReveal = 0
   private baseRadius: number = ENEMY.radius
   private phase: number
 
@@ -44,19 +36,9 @@ export class Enemy {
       : this.baseRadius
   }
 
-  setPhased(on: boolean): void {
-    this.phased = on
-  }
-
-  updatePhaseVisual(dt: number): void {
-    const target = this.phased ? 1 : 0
-    this.phaseAmount += (target - this.phaseAmount) * (1 - Math.exp(-9 * dt))
-    if (Math.abs(this.phaseAmount - target) < 0.01) this.phaseAmount = target
-  }
-
   /** True when contact should kill the player. */
   get isHazardous(): boolean {
-    return this.armed && this.phaseAmount < 0.42
+    return this.armed
   }
 
   beginCharge(): void {
@@ -136,10 +118,9 @@ export class Enemy {
   }
 
   get alpha(): number {
-    const base =
+    return (
       ENEMY.spawnAlpha + (1 - ENEMY.spawnAlpha) * easeOutCubic(this.armProgress)
-    // Phased enemies read as semi-transparent immediately.
-    return base * (1 - this.phaseAmount * 0.62)
+    )
   }
 
   get pulse(): number {

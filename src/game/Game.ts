@@ -4,6 +4,7 @@ import {
   COMBO,
   DIFFICULTY,
   ENEMY,
+  INTEL_PALETTE,
   LOOP,
   PRIZE_ORB,
   SCORE_POPUP,
@@ -109,6 +110,8 @@ export class Game {
   private lastTime = 0
   private running = false
   private uiAccum = 0
+  private idleRenderAccum = 0
+  private needsRender = true
   private listener: SnapshotListener | null = null
   private deathDelay = 0
   private dying = false
@@ -117,6 +120,56 @@ export class Game {
   private playerHidden = false
   /** 1 = full board, 0 = cleared — fades out on death before game over UI. */
   private worldAlpha = 1
+
+  private readonly eventBounds = {
+    minX: 0,
+    maxX: 0,
+    minY: 0,
+    maxY: 0,
+  }
+  private readonly hazardsBuf: { x: number; y: number; radius: number }[] = []
+  private cachedEventVisuals: EventVisuals | null = null
+  private readonly eventCtx: EventContext = {
+    dt: 0,
+    elapsed: 0,
+    difficultyTicks: 0,
+    width: 0,
+    height: 0,
+    bounds: this.eventBounds,
+    player: this.player,
+    orbs: this.orbs,
+    enemies: this.enemies,
+    particles: this.particles,
+    audio: this.audio,
+    findOrbSpawn: (exclude, extra) =>
+      this.findOrbSpawn(exclude ?? null, extra ?? 0),
+    findSpawn: (extra) => this.findSpawn(extra ?? 0),
+    spawnEnemyAt: (x, y) => this.spawnEnemyAt(x, y),
+    setTargetEnemyCount: (n) => {
+      this.targetEnemyCount = Math.min(
+        ENEMY.maxCount,
+        Math.max(ENEMY.initialCount, n),
+      )
+    },
+    addScore: (points) => {
+      this.score += Math.max(0, Math.floor(points))
+    },
+    applyPlayerImpulse: (vx, vy, maxSpeed) => {
+      this.player.vx += vx
+      this.player.vy += vy
+      if (maxSpeed != null) {
+        const s = length(this.player.vx, this.player.vy)
+        if (s > maxSpeed) {
+          this.player.vx = (this.player.vx / s) * maxSpeed
+          this.player.vy = (this.player.vy / s) * maxSpeed
+        }
+      }
+    },
+    killPlayer: () => {
+      this.pendingBlastKill = true
+    },
+    dying: false,
+  }
 
   constructor() {
     const settings = loadSettings()
@@ -227,6 +280,7 @@ export class Game {
     void this.audio.ensureRunning()
     this.resetRun()
     this.phase = 'playing'
+    this.needsRender = true
     this.emit(true)
   }
 
@@ -234,6 +288,7 @@ export class Game {
     if (this.phase !== 'playing' || this.dying) return
     this.phase = 'paused'
     this.releasePointer()
+    this.needsRender = true
     this.emit(true)
   }
 
@@ -241,6 +296,7 @@ export class Game {
     if (this.phase !== 'paused') return
     this.phase = 'playing'
     this.lastTime = performance.now()
+    this.needsRender = true
     this.emit(true)
   }
 
@@ -248,6 +304,7 @@ export class Game {
     void this.audio.ensureRunning()
     this.resetRun()
     this.phase = 'playing'
+    this.needsRender = true
     this.emit(true)
   }
 
@@ -257,10 +314,14 @@ export class Game {
     this.pendingBlastKill = false
     this.playerHidden = false
     this.worldAlpha = 1
+    this.needsRender = true
     this.releasePointer()
     this.particles.clear()
     this.orbs = []
     this.enemies = []
+    this.eventCtx.orbs = this.orbs
+    this.eventCtx.enemies = this.enemies
+    this.cachedEventVisuals = null
     this.emit(true)
   }
 
@@ -305,6 +366,9 @@ export class Game {
     this.player.reset(this.width, this.height)
     this.orbs = []
     this.enemies = []
+    this.eventCtx.orbs = this.orbs
+    this.eventCtx.enemies = this.enemies
+    this.cachedEventVisuals = null
     this.releasePointer()
     this.seedEntities()
   }
@@ -395,7 +459,6 @@ export class Game {
   }
 
   private spawnEnemy(): void {
-    if (this.eventManager.blocksEnemySpawns) return
     if (this.enemies.filter((e) => e.alive).length >= ENEMY.maxCount) return
     const pos = this.findSpawn()
     if (!pos) return
@@ -411,6 +474,8 @@ export class Game {
         this.worldAlpha = 0
         this.orbs = []
         this.enemies = []
+        this.eventCtx.orbs = this.orbs
+        this.eventCtx.enemies = this.enemies
       }
       this.deathDelay -= dt
       if (this.deathDelay <= 0) {
@@ -420,7 +485,23 @@ export class Game {
       this.updatePlaying(dt)
     }
 
-    this.renderFrame()
+    const live =
+      this.dying || this.phase === 'playing' || this.phase === 'paused'
+    if (live) {
+      this.renderFrame()
+      this.needsRender = false
+      this.idleRenderAccum = 0
+    } else {
+      this.idleRenderAccum += dt
+      if (
+        this.needsRender ||
+        this.idleRenderAccum >= 1 / LOOP.idleRenderHz
+      ) {
+        this.idleRenderAccum = 0
+        this.needsRender = false
+        this.renderFrame()
+      }
+    }
 
     this.uiAccum += dt
     if (this.uiAccum >= 1 / LOOP.uiSnapshotHz) {
@@ -435,8 +516,12 @@ export class Game {
     this.worldAlpha = 0
     this.orbs = []
     this.enemies = []
+    this.eventCtx.orbs = this.orbs
+    this.eventCtx.enemies = this.enemies
     this.particles.clear()
     this.phase = 'gameover'
+    this.cachedEventVisuals = null
+    this.needsRender = true
     this.emit(true)
   }
 
@@ -474,7 +559,7 @@ export class Game {
       this.height,
     )
 
-    const ctx = this.buildEventContext(dt)
+    const ctx = this.fillEventContext(dt)
     if (this.mode === 'survival') {
       this.eventManager.update(dt, ctx)
     }
@@ -485,11 +570,10 @@ export class Game {
       return
     }
 
-    const hazards = this.enemies.map((e) => ({
-      x: e.x,
-      y: e.y,
-      radius: e.radius,
-    }))
+    this.cachedEventVisuals =
+      this.mode === 'survival' ? this.eventManager.getVisuals(ctx) : null
+
+    const hazards = this.fillHazards()
     for (const orb of this.orbs) {
       orb.update(
         dt,
@@ -509,55 +593,45 @@ export class Game {
     this.particles.update(dt)
   }
 
-  private buildEventContext(dt: number): EventContext {
+  private fillHazards(): { x: number; y: number; radius: number }[] {
+    const buf = this.hazardsBuf
+    let n = 0
+    for (const e of this.enemies) {
+      let slot = buf[n]
+      if (!slot) {
+        slot = { x: 0, y: 0, radius: 0 }
+        buf[n] = slot
+      }
+      slot.x = e.x
+      slot.y = e.y
+      slot.radius = e.radius
+      n++
+    }
+    buf.length = n
+    return buf
+  }
+
+  private fillEventContext(dt: number): EventContext {
     const chromeTop = isTelegramMiniApp() ? getChromeInsets().top : 0
     const topInset = Math.max(SPAWN.topInset, chromeTop + 72)
-    return {
-      dt,
-      elapsed: this.elapsed,
-      difficultyTicks: this.difficultyTicks,
-      width: this.width,
-      height: this.height,
-      bounds: {
-        minX: SPAWN.padding,
-        maxX: this.width - SPAWN.padding,
-        minY: SPAWN.padding + topInset,
-        maxY: this.height - SPAWN.padding - SPAWN.bottomInset,
-      },
-      player: this.player,
-      orbs: this.orbs,
-      enemies: this.enemies,
-      particles: this.particles,
-      audio: this.audio,
-      findOrbSpawn: (exclude, extra) => this.findOrbSpawn(exclude ?? null, extra ?? 0),
-      findSpawn: (extra) => this.findSpawn(extra ?? 0),
-      spawnEnemyAt: (x, y) => this.spawnEnemyAt(x, y),
-      setTargetEnemyCount: (n) => {
-        this.targetEnemyCount = Math.min(ENEMY.maxCount, Math.max(ENEMY.initialCount, n))
-      },
-      addScore: (points) => {
-        this.score += Math.max(0, Math.floor(points))
-      },
-      applyPlayerImpulse: (vx, vy, maxSpeed) => {
-        this.player.vx += vx
-        this.player.vy += vy
-        if (maxSpeed != null) {
-          const s = length(this.player.vx, this.player.vy)
-          if (s > maxSpeed) {
-            this.player.vx = (this.player.vx / s) * maxSpeed
-            this.player.vy = (this.player.vy / s) * maxSpeed
-          }
-        }
-      },
-      killPlayer: () => {
-        this.pendingBlastKill = true
-      },
-      dying: this.dying || this.pendingBlastKill,
-    }
+    const ctx = this.eventCtx
+    ctx.dt = dt
+    ctx.elapsed = this.elapsed
+    ctx.difficultyTicks = this.difficultyTicks
+    ctx.width = this.width
+    ctx.height = this.height
+    ctx.orbs = this.orbs
+    ctx.enemies = this.enemies
+    ctx.dying = this.dying || this.pendingBlastKill
+    this.eventBounds.minX = SPAWN.padding
+    this.eventBounds.maxX = this.width - SPAWN.padding
+    this.eventBounds.minY = SPAWN.padding + topInset
+    this.eventBounds.maxY =
+      this.height - SPAWN.padding - SPAWN.bottomInset
+    return ctx
   }
 
   private spawnEnemyAt(x: number, y: number): Enemy | null {
-    if (this.eventManager.blocksEnemySpawns) return null
     if (this.enemies.filter((e) => e.alive).length >= ENEMY.maxCount) return null
     // Reuse dead slots
     const dead = this.enemies.find((e) => !e.alive)
@@ -651,9 +725,8 @@ export class Game {
     )
   }
 
-  /** Spawn up to targetEnemyCount when visibility events are not blocking. */
+  /** Spawn up to targetEnemyCount. */
   private refillEnemiesToTarget(): void {
-    if (this.eventManager.blocksEnemySpawns) return
     while (this.enemies.length < this.targetEnemyCount) {
       const before = this.enemies.length
       this.spawnEnemy()
@@ -695,7 +768,12 @@ export class Game {
     const points = (isPrize ? PRIZE_ORB.score : WHITE_ORB.baseScore) * this.combo
     this.score += points
 
-    this.particles.emitCollect(hit.x, hit.y, this.combo, '#FFFFFF')
+    this.particles.emitCollect(
+      hit.x,
+      hit.y,
+      this.combo,
+      isPrize ? INTEL_PALETTE[Math.floor(Math.random() * INTEL_PALETTE.length)]! : '#FFFFFF',
+    )
     this.particles.addPopup(
       hit.x,
       hit.y - 10,
@@ -716,7 +794,7 @@ export class Game {
     }
 
     if (this.mode === 'survival') {
-      const ctx = this.buildEventContext(0)
+      const ctx = this.fillEventContext(0)
       this.eventManager.onOrbCollected(hit, ctx)
     }
 
@@ -759,7 +837,7 @@ export class Game {
     if (this.dying) return
     this.dying = true
     this.pendingBlastKill = false
-    const ctx = this.buildEventContext(0)
+    const ctx = this.fillEventContext(0)
     this.eventManager.forceEnd(ctx)
 
     this.audio.playDeath()
@@ -805,14 +883,18 @@ export class Game {
     const showPlayer =
       this.phase === 'playing' && !this.dying && !this.playerHidden
 
-    const ctx = this.buildEventContext(0)
-    const eventVisuals: EventVisuals = this.eventManager.getVisuals(ctx)
+    // Prefer visuals cached during the sim step; refresh on pause / death fade.
+    let eventVisuals = this.cachedEventVisuals
+    if (this.mode === 'survival' && (eventVisuals == null || this.phase === 'paused' || this.dying)) {
+      eventVisuals = this.eventManager.getVisuals(this.fillEventContext(0))
+      this.cachedEventVisuals = eventVisuals
+    }
 
     this.renderer.render(this.player, this.orbs, this.enemies, this.particles, {
       showPlayer,
       dimmed: this.phase === 'paused',
       worldAlpha: this.dying ? this.worldAlpha : 1,
-      events: eventVisuals,
+      events: this.mode === 'survival' ? eventVisuals : null,
     })
   }
 
