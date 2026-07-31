@@ -239,6 +239,8 @@ export const EVENTS = {
     leaveDuration: 0.35,
   },
   crossfire: {
+    /** Disabled — keep code, exclude from schedule. */
+    enabled: false,
     unlockStage: 8,
     duration: 12,
     maxWaves: 7,
@@ -249,6 +251,8 @@ export const EVENTS = {
     intervalLate: 1.5,
   },
   bulletHell: {
+    /** Disabled — keep code, exclude from schedule. */
+    enabled: false,
     unlockStage: 10,
     duration: 15,
     maxWaves: 7,
@@ -265,6 +269,8 @@ export const EVENTS = {
     maxYellow: 5,
   },
   phaseShift: {
+    /** Disabled — keep code, exclude from schedule. */
+    enabled: false,
     unlockStage: 6,
     duration: 15,
     phaseDuration: 2,
@@ -275,6 +281,8 @@ export const EVENTS = {
     particleInterval: 0.055,
   },
   radar: {
+    /** Disabled — keep code, exclude from schedule. */
+    enabled: false,
     unlockStage: 7,
     duration: 15,
     interval: 3.25,

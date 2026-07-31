@@ -189,8 +189,10 @@ export class EventManager {
   }
 
   private unlockedIds(stage: number): EventId[] {
-    return (Object.keys(UNLOCK) as EventId[]).filter(
-      (id) => stage >= UNLOCK[id],
-    )
+    return (Object.keys(UNLOCK) as EventId[]).filter((id) => {
+      if (stage < UNLOCK[id]) return false
+      const cfg = EVENTS[id] as { enabled?: boolean }
+      return cfg.enabled !== false
+    })
   }
 }
