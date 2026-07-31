@@ -1,4 +1,5 @@
 import { EVENTS } from '../constants'
+import { pulseHaptic } from '@/lib/feel'
 import { BaseEvent } from './BaseEvent'
 import type { EventContext, EventId } from './EventContext'
 import type { LaserLine } from './LaserAttack'
@@ -78,7 +79,10 @@ export class SniperEvent extends BaseEvent {
         ctx.player.vy,
       )
 
-      if (justLocked) ctx.audio.playSniperLock()
+      if (justLocked) {
+        ctx.audio.playSniperLock()
+        pulseHaptic('danger')
+      }
 
       if (justFired) {
         const hit = this.drone.laser.checkHit(

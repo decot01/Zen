@@ -2,12 +2,7 @@ import { LOOP } from '@/game/constants'
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { Game, type GameSnapshot } from '@/game/Game'
 import type { GameMode } from '@/game/mode'
-import { flushRecordsToCloud, syncRecordsWithCloud } from '@/lib/cloudSync'
-import {
-  getTelegramWebApp,
-  requestTelegramFullscreen,
-  syncTelegramSafeArea,
-} from '@/lib/telegram'
+import { syncChromeSafeArea } from '@/lib/chrome'
 import { lockPortraitOrientation } from '@/lib/orientation'
 import { loadSettings } from '@/utils/storage'
 
@@ -69,53 +64,6 @@ export function useGame() {
     return () => game.setListener(null)
   }, [game])
 
-  // Pull Telegram CloudStorage records and merge with local bests.
-  useEffect(() => {
-    let cancelled = false
-
-    const apply = async () => {
-      const records = await syncRecordsWithCloud()
-      if (cancelled) return
-      const { synced: _synced, ...bundle } = records
-      game.applySyncedRecords(bundle)
-    }
-
-    void apply()
-    const retry = window.setTimeout(() => {
-      void apply()
-    }, 1500)
-
-    const onVisible = () => {
-      if (document.visibilityState === 'visible') void apply()
-    }
-    document.addEventListener('visibilitychange', onVisible)
-
-    return () => {
-      cancelled = true
-      window.clearTimeout(retry)
-      document.removeEventListener('visibilitychange', onVisible)
-    }
-  }, [game])
-
-  // Re-flush after a run so a new PC best is not lost if the first write raced.
-  useEffect(() => {
-    if (snapshot.phase !== 'gameover') return
-    let cancelled = false
-    void (async () => {
-      const local = loadSettings().records
-      const ok = await flushRecordsToCloud(local)
-      if (cancelled || ok) return
-      const records = await syncRecordsWithCloud()
-      if (!cancelled) {
-        const { synced: _synced, ...bundle } = records
-        game.applySyncedRecords(bundle)
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [game, snapshot.phase, snapshot.mode, snapshot.bestScore, snapshot.highCombo])
-
   useEffect(() => {
     const canvas = canvasRef.current
     const container = containerRef.current
@@ -125,6 +73,7 @@ export function useGame() {
     game.startLoop()
 
     const resize = () => {
+      syncChromeSafeArea()
       const rect = container.getBoundingClientRect()
       const raw = window.devicePixelRatio || 1
       // Cap DPR for high-refresh / high-DPI fill-rate (120 Hz phones).
@@ -135,25 +84,13 @@ export function useGame() {
     resize()
     const observer = new ResizeObserver(resize)
     observer.observe(container)
-
-    const wa = getTelegramWebApp()
-    const onViewport = () => {
-      syncTelegramSafeArea()
-      resize()
-    }
-    wa?.onEvent?.('viewportChanged', onViewport)
-    wa?.onEvent?.('safeAreaChanged', onViewport)
-    wa?.onEvent?.('contentSafeAreaChanged', onViewport)
-    wa?.onEvent?.('fullscreenChanged', onViewport)
     window.addEventListener('resize', resize)
+    window.visualViewport?.addEventListener('resize', resize)
 
     return () => {
       observer.disconnect()
       window.removeEventListener('resize', resize)
-      wa?.offEvent?.('viewportChanged', onViewport)
-      wa?.offEvent?.('safeAreaChanged', onViewport)
-      wa?.offEvent?.('contentSafeAreaChanged', onViewport)
-      wa?.offEvent?.('fullscreenChanged', onViewport)
+      window.visualViewport?.removeEventListener('resize', resize)
       game.stopLoop()
     }
   }, [game])
@@ -219,21 +156,15 @@ export function useGame() {
     onPointerUp,
     setMode: (mode: GameMode) => game.setMode(mode),
     play: () => {
-      requestTelegramFullscreen()
       lockPortraitOrientation()
-      syncTelegramSafeArea()
-      void syncRecordsWithCloud().then((records) => {
-        const { synced: _synced, ...bundle } = records
-        game.applySyncedRecords(bundle)
-      })
+      syncChromeSafeArea()
       game.play()
     },
     pause: () => game.pause(),
     resume: () => game.resume(),
     restart: () => {
-      requestTelegramFullscreen()
       lockPortraitOrientation()
-      syncTelegramSafeArea()
+      syncChromeSafeArea()
       game.restart()
     },
     quitToMenu: () => game.quitToMenu(),

@@ -1,6 +1,6 @@
 /**
  * Prefer portrait-only play. Browsers often ignore Screen Orientation API
- * outside fullscreen / installed PWA; Telegram has its own lock (Bot API 8+).
+ * outside fullscreen / installed PWA; Capacitor WebViews usually honor it.
  */
 
 function isPortrait(): boolean {
@@ -11,16 +11,6 @@ function isPortrait(): boolean {
 
 /** Best-effort lock to portrait (safe to call repeatedly). */
 export function lockPortraitOrientation(): void {
-  // Telegram: locks *current* orientation — only call while already portrait.
-  try {
-    const wa = window.Telegram?.WebApp
-    if (wa?.initData && isPortrait()) {
-      wa.lockOrientation?.()
-    }
-  } catch {
-    // Older clients / missing method.
-  }
-
   const orientation = screen.orientation as ScreenOrientation & {
     lock?: (orientation: OrientationLockType) => Promise<void>
   }

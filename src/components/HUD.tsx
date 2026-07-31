@@ -3,7 +3,7 @@ import { Badge } from '@/components/ui/badge'
 import { glassSurfaceClassName } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
-import { transitionSpring, transitionSpringSnappy } from '@/lib/motion'
+import { transitionSpringSnappy } from '@/lib/motion'
 import { Score } from './Score'
 
 interface HUDProps {
@@ -46,6 +46,7 @@ function HudStat({
         <div className="mt-1 flex h-7 items-center leading-none">
           <Score
             value={value}
+            animated={false}
             className={
               align === 'left' ? 'text-foreground' : 'text-foreground/85'
             }
@@ -60,44 +61,24 @@ export function HUD({ score, best, combo, elapsed, activeEvent }: HUDProps) {
   const showCombo = combo > 1
 
   return (
-    <div className="pointer-events-none absolute inset-x-0 top-0 z-20 px-4 pt-[var(--zen-safe-top)]">
-      <motion.div
-        className="mx-auto max-w-md"
-        initial={{ opacity: 0, y: -14 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={transitionSpringSnappy}
-      >
+    <div className="pointer-events-none absolute inset-x-0 top-0 z-20 px-4 pt-[calc(var(--zen-safe-top)+var(--zen-hud-extra))]">
+      <div className="mx-auto max-w-md">
         <Card className={cn(glassSurfaceClassName, 'px-4 py-2.5')}>
           <div className="grid grid-cols-3 items-center gap-3">
             <HudStat label="Score" value={score} align="left" />
 
             <div className="flex flex-col items-center justify-center justify-self-center">
-              <AnimatePresence initial={false}>
-                {showCombo && (
-                  <motion.div
-                    key="combo"
-                    className="overflow-hidden"
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: 'auto', opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    transition={transitionSpring}
-                  >
-                    <div className="mb-1.5 flex justify-center">
-                      <Badge className="border-foreground/15 bg-primary px-2.5 py-0.5 text-xs text-primary-foreground">
-                        x{combo}
-                      </Badge>
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+              {showCombo && (
+                <div className="mb-1.5 flex justify-center">
+                  <Badge className="border-foreground/15 bg-primary px-2.5 py-0.5 text-xs text-primary-foreground">
+                    x{combo}
+                  </Badge>
+                </div>
+              )}
 
-              <motion.span
-                layout
-                className="text-[11px] font-medium tabular-nums leading-none tracking-wide text-muted-foreground"
-                transition={transitionSpring}
-              >
+              <span className="text-[11px] font-medium tabular-nums leading-none tracking-wide text-muted-foreground">
                 {formatTime(elapsed)}
-              </motion.span>
+              </span>
             </div>
 
             <HudStat label="Best" value={best} align="right" />
@@ -123,7 +104,7 @@ export function HUD({ score, best, combo, elapsed, activeEvent }: HUDProps) {
             </motion.div>
           )}
         </AnimatePresence>
-      </motion.div>
+      </div>
     </div>
   )
 }

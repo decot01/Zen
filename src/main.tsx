@@ -1,14 +1,14 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App'
-import { warmCloudSync } from '@/lib/cloudSync'
+import { syncChromeSafeArea } from '@/lib/chrome'
+import { initNativeShell } from '@/lib/native'
 import { startPortraitOrientationLock } from '@/lib/orientation'
-import { initTelegramMiniApp } from '@/lib/telegram'
 import './index.css'
 
-initTelegramMiniApp()
+void initNativeShell()
+syncChromeSafeArea()
 startPortraitOrientationLock()
-warmCloudSync()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

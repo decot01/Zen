@@ -118,11 +118,11 @@ export const COMBO_FX = {
 } as const
 
 export const PARTICLES = {
-  maxCount: 120,
-  collectCount: 10,
+  maxCount: 90,
+  collectCount: 8,
   collectSpeed: 180,
   collectLife: 0.55,
-  deathCount: 42,
+  deathCount: 32,
   deathSpeed: 420,
   deathLife: 0.9,
   shockwaveDuration: 0.55,
@@ -134,8 +134,8 @@ export const PARTICLES = {
 
 export const SPAWN = {
   padding: 28,
-  /** Keep entities clear of the top HUD banner. */
-  topInset: 108,
+  /** Keep entities clear of the top HUD banner (notch + safe area). */
+  topInset: 148,
   /** Keep entities clear of the bottom pause control. */
   bottomInset: 92,
   minDistanceFromPlayer: 88,
@@ -167,9 +167,9 @@ export const SPAWN = {
 export const LOOP = {
   /** Spike clamp only — loop is display-synced (60/120/144 Hz via rAF). */
   maxDelta: 1 / 30,
-  uiSnapshotHz: 12,
-  /** Cap canvas backing-store DPR to keep fill-rate viable at 120 Hz. */
-  maxDpr: 2,
+  uiSnapshotHz: 10,
+  /** Cap canvas backing-store DPR — 1.5 keeps 120 Hz fill-rate sane on phones. */
+  maxDpr: 1.5,
   /** Menu / game over redraw rate when the board is static. */
   idleRenderHz: 24,
 } as const
@@ -185,38 +185,6 @@ export const EVENTS = {
   cooldownMax: 25,
   fadeIn: 0.55,
   fadeOut: 0.55,
-  energyWalls: {
-    /** Early pool opens together so first event is not always walls. */
-    unlockStage: 2,
-    duration: 12,
-    /** White frame thickness along playfield edges. */
-    borderThickness: 5,
-    /** Soft push starts this far before the ball touches the border. */
-    bandWidth: 20,
-    pushStrength: 9500,
-    pushMaxSpeed: 1600,
-    /** Minimum outward speed after a wall hit. */
-    bounceKick: 1450,
-    /** Expand-from-center open duration (seconds). */
-    openDuration: 0.85,
-    /** Wall frame “jerk” when the ball bounces. */
-    impactDuration: 0.22,
-    impactOffset: 12,
-  },
-  shockwave: {
-    unlockStage: 2,
-    duration: 11,
-    intervalMin: 3.4,
-    intervalMax: 4.2,
-    maxWaves: 3,
-    /** Thickness of the energy band. */
-    bandWidth: 30,
-    /** Seconds for a wave to cross the arena. */
-    travelDuration: 1.9,
-    playerImpulse: 620,
-    playerMaxSpeed: 620,
-    knockDecay: 4.8,
-  },
   berserk: {
     unlockStage: 2,
     duration: 18,
@@ -225,7 +193,7 @@ export const EVENTS = {
     glowMul: 2.4,
   },
   chainExplosion: {
-    unlockStage: 4,
+    unlockStage: 2,
     durationMin: 12,
     durationMax: 15,
     /** Seconds between spontaneous charge picks. */
@@ -242,7 +210,7 @@ export const EVENTS = {
     warnParticleInterval: 0.07,
   },
   sniper: {
-    unlockStage: 4,
+    unlockStage: 2,
     duration: 15,
     /** Seconds between drone appearances. */
     interval: 3,

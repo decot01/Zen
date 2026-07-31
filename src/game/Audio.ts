@@ -94,46 +94,49 @@ export class GameAudio {
     osc.stop(t + 0.14)
   }
 
-  /** Deep boom on death. */
+  /** Soft deep boom on death — classic pleasant tone. */
   playDeath(): void {
     if (this.muted) return
-    void this.ensureRunning()
-    const ctx = this.getCtx()
-    const t = ctx.currentTime
+    void (async () => {
+      await this.ensureRunning()
+      if (this.muted) return
+      const ctx = this.getCtx()
+      const t = ctx.currentTime
 
-    const osc = ctx.createOscillator()
-    const gain = ctx.createGain()
-    osc.type = 'sine'
-    osc.frequency.setValueAtTime(120, t)
-    osc.frequency.exponentialRampToValueAtTime(28, t + 0.45)
-    gain.gain.setValueAtTime(0.0001, t)
-    gain.gain.exponentialRampToValueAtTime(0.35, t + 0.02)
-    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.5)
-    osc.connect(gain)
-    gain.connect(this.dest())
-    osc.start(t)
-    osc.stop(t + 0.52)
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.type = 'sine'
+      osc.frequency.setValueAtTime(120, t)
+      osc.frequency.exponentialRampToValueAtTime(28, t + 0.45)
+      gain.gain.setValueAtTime(0.0001, t)
+      gain.gain.exponentialRampToValueAtTime(0.35, t + 0.02)
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.5)
+      osc.connect(gain)
+      gain.connect(this.dest())
+      osc.start(t)
+      osc.stop(t + 0.52)
 
-    // Filtered noise burst
-    const bufferSize = Math.floor(ctx.sampleRate * 0.25)
-    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate)
-    const data = buffer.getChannelData(0)
-    for (let i = 0; i < bufferSize; i++) {
-      data[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize)
-    }
-    const noise = ctx.createBufferSource()
-    noise.buffer = buffer
-    const filter = ctx.createBiquadFilter()
-    filter.type = 'lowpass'
-    filter.frequency.value = 400
-    const nGain = ctx.createGain()
-    nGain.gain.setValueAtTime(0.2, t)
-    nGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.3)
-    noise.connect(filter)
-    filter.connect(nGain)
-    nGain.connect(this.dest())
-    noise.start(t)
-    noise.stop(t + 0.3)
+      // Filtered noise burst
+      const bufferSize = Math.floor(ctx.sampleRate * 0.25)
+      const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate)
+      const data = buffer.getChannelData(0)
+      for (let i = 0; i < bufferSize; i++) {
+        data[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize)
+      }
+      const noise = ctx.createBufferSource()
+      noise.buffer = buffer
+      const filter = ctx.createBiquadFilter()
+      filter.type = 'lowpass'
+      filter.frequency.value = 400
+      const nGain = ctx.createGain()
+      nGain.gain.setValueAtTime(0.2, t)
+      nGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.3)
+      noise.connect(filter)
+      filter.connect(nGain)
+      nGain.connect(this.dest())
+      noise.start(t)
+      noise.stop(t + 0.3)
+    })()
   }
 
   playEventWhoosh(): void {
@@ -172,114 +175,6 @@ export class GameAudio {
     gain.connect(this.dest())
     osc.start(t)
     osc.stop(t + 0.58)
-  }
-
-  playEnergyWallsStart(): void {
-    if (this.muted) return
-    void this.ensureRunning()
-    const ctx = this.getCtx()
-    const t = ctx.currentTime
-    const osc = ctx.createOscillator()
-    const gain = ctx.createGain()
-    osc.type = 'sine'
-    osc.frequency.setValueAtTime(140, t)
-    osc.frequency.exponentialRampToValueAtTime(420, t + 0.28)
-    osc.frequency.exponentialRampToValueAtTime(180, t + 0.55)
-    gain.gain.setValueAtTime(0.0001, t)
-    gain.gain.exponentialRampToValueAtTime(0.07, t + 0.05)
-    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.6)
-    osc.connect(gain)
-    gain.connect(this.dest())
-    osc.start(t)
-    osc.stop(t + 0.62)
-  }
-
-  playEnergyWallHit(): void {
-    if (this.muted) return
-    void this.ensureRunning()
-    const ctx = this.getCtx()
-    const t = ctx.currentTime
-    const osc = ctx.createOscillator()
-    const gain = ctx.createGain()
-    osc.type = 'triangle'
-    osc.frequency.setValueAtTime(520, t)
-    osc.frequency.exponentialRampToValueAtTime(160, t + 0.14)
-    gain.gain.setValueAtTime(0.0001, t)
-    gain.gain.exponentialRampToValueAtTime(0.07, t + 0.01)
-    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.18)
-    osc.connect(gain)
-    gain.connect(this.dest())
-    osc.start(t)
-    osc.stop(t + 0.2)
-
-    const click = ctx.createOscillator()
-    const clickGain = ctx.createGain()
-    click.type = 'square'
-    click.frequency.setValueAtTime(880, t)
-    clickGain.gain.setValueAtTime(0.0001, t)
-    clickGain.gain.exponentialRampToValueAtTime(0.025, t + 0.005)
-    clickGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.06)
-    click.connect(clickGain)
-    clickGain.connect(this.dest())
-    click.start(t)
-    click.stop(t + 0.07)
-  }
-
-  playShockwaveSpawn(): void {
-    if (this.muted) return
-    void this.ensureRunning()
-    const ctx = this.getCtx()
-    const t = ctx.currentTime
-    const osc = ctx.createOscillator()
-    const gain = ctx.createGain()
-    osc.type = 'sine'
-    osc.frequency.setValueAtTime(68, t)
-    osc.frequency.exponentialRampToValueAtTime(36, t + 0.55)
-    gain.gain.setValueAtTime(0.0001, t)
-    gain.gain.exponentialRampToValueAtTime(0.08, t + 0.06)
-    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.6)
-    osc.connect(gain)
-    gain.connect(this.dest())
-    osc.start(t)
-    osc.stop(t + 0.62)
-  }
-
-  playShockwaveWhoosh(): void {
-    if (this.muted) return
-    void this.ensureRunning()
-    const ctx = this.getCtx()
-    const t = ctx.currentTime
-    const osc = ctx.createOscillator()
-    const gain = ctx.createGain()
-    osc.type = 'triangle'
-    osc.frequency.setValueAtTime(240, t)
-    osc.frequency.exponentialRampToValueAtTime(70, t + 0.45)
-    gain.gain.setValueAtTime(0.0001, t)
-    gain.gain.exponentialRampToValueAtTime(0.035, t + 0.05)
-    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.5)
-    osc.connect(gain)
-    gain.connect(this.dest())
-    osc.start(t)
-    osc.stop(t + 0.52)
-  }
-
-  playShockwaveImpact(): void {
-    if (this.muted) return
-    void this.ensureRunning()
-    const ctx = this.getCtx()
-    const t = ctx.currentTime
-    const osc = ctx.createOscillator()
-    const gain = ctx.createGain()
-    osc.type = 'sine'
-    osc.frequency.setValueAtTime(90, t)
-    osc.frequency.exponentialRampToValueAtTime(28, t + 0.22)
-    gain.gain.setValueAtTime(0.0001, t)
-    gain.gain.exponentialRampToValueAtTime(0.09, t + 0.015)
-    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.28)
-    osc.connect(gain)
-    gain.connect(this.dest())
-    osc.start(t)
-    osc.stop(t + 0.3)
   }
 
   /** Rising warn chirp when an enemy begins charging. */

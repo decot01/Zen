@@ -1,4 +1,3 @@
-import { flushRecordsToCloud } from '@/lib/cloudSync'
 import {
   emptyModeRecords,
   emptyModeRecordsMap,
@@ -121,9 +120,6 @@ export function updateSettings(
     records: partial.records ?? prev.records,
   }
   saveSettings(next)
-  if (partial.records !== undefined || partial.mode !== undefined) {
-    void flushRecordsToCloud(next.records)
-  }
   return next
 }
 

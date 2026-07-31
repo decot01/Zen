@@ -11,11 +11,6 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { IconToggle } from '@/components/IconToggle'
 import { IntelGlow } from '@/components/IntelGlow'
-import {
-  getSyncStatus,
-  subscribeSyncStatus,
-  type SyncStatus,
-} from '@/lib/cloudSync'
 import { pulseHaptic } from '@/lib/feel'
 import {
   staggerContainer,
@@ -35,20 +30,6 @@ interface MenuProps {
   onPlay: () => void
   onToggleMute: () => void
   onToggleHaptics: () => void
-}
-
-function syncLabel(status: SyncStatus): string {
-  switch (status.state) {
-    case 'ok':
-      return 'connected'
-    case 'syncing':
-      return 'connect…'
-    case 'error':
-      return 'connect err'
-    case 'off':
-    default:
-      return 'local'
-  }
 }
 
 const MODE_COPY: Record<GameMode, { lead: string; punch: string }> = {
@@ -226,8 +207,6 @@ export function Menu({
   onToggleMute,
   onToggleHaptics,
 }: MenuProps) {
-  const [sync, setSync] = useState<SyncStatus>(() => getSyncStatus())
-  useEffect(() => subscribeSyncStatus(setSync), [])
   const copy = MODE_COPY[mode]
 
   return (
@@ -321,8 +300,6 @@ export function Menu({
 
       <p className="pointer-events-none absolute inset-x-0 bottom-0 pb-[max(1rem,var(--zen-safe-bottom))] text-center text-[10px] tabular-nums tracking-[0.14em] text-muted-foreground/50">
         {version}
-        <span className="mx-2 opacity-40">·</span>
-        {syncLabel(sync)}
       </p>
     </div>
   )

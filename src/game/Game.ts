@@ -20,7 +20,7 @@ import { ParticleSystem } from './Particles'
 import { Player } from './Player'
 import { Renderer } from './Renderer'
 import { Spawner } from './Spawner'
-import { getChromeInsets, isTelegramMiniApp } from '@/lib/telegram'
+import { getChromeInsets } from '@/lib/chrome'
 import { loadSettings, updateModeRecords, updateSettings } from '@/utils/storage'
 import { length } from '@/utils/math'
 import { randomRange } from '@/utils/random'
@@ -612,8 +612,8 @@ export class Game {
   }
 
   private fillEventContext(dt: number): EventContext {
-    const chromeTop = isTelegramMiniApp() ? getChromeInsets().top : 0
-    const topInset = Math.max(SPAWN.topInset, chromeTop + 72)
+    const chromeTop = getChromeInsets().top
+    const topInset = Math.max(SPAWN.topInset, chromeTop + 96)
     const ctx = this.eventCtx
     ctx.dt = dt
     ctx.elapsed = this.elapsed
@@ -644,8 +644,6 @@ export class Game {
       dead.alive = true
       dead.setBerserk(false)
       dead.clearCharge()
-      dead.knockVx = 0
-      dead.knockVy = 0
       return dead
     }
     if (this.enemies.length >= ENEMY.maxCount) return null
@@ -783,10 +781,9 @@ export class Game {
     )
 
     this.audio.playCollect()
-    if (isPrize || (this.combo > prevCombo && this.combo > 1)) {
-      this.haptics.pulse('combo')
-    } else {
-      this.haptics.pulse('collect')
+    // Sparse: prize or notable combo steps only — never every orb.
+    if (isPrize || (this.combo > prevCombo && [3, 5, 8, 12].includes(this.combo))) {
+      this.haptics.pulse('milestone')
     }
     if (this.combo > prevCombo && this.combo > 1) {
       this.particles.emitCombo(this.player.x, this.player.y, this.combo)

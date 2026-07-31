@@ -1,10 +1,10 @@
-import { COLORS, ENEMY, EVENTS, PLAYER, PRIZE_ORB } from './constants'
+import { COLORS, ENEMY, EVENTS, PLAYER } from './constants'
 import type { Enemy } from './Enemy'
 import type { EventVisuals } from './events/EventContext'
 import type { Orb } from './Orb'
 import type { ParticleSystem } from './Particles'
 import type { Player } from './Player'
-import { clamp, easeOutBack, easeOutCubic } from '@/utils/math'
+import { clamp } from '@/utils/math'
 
 export class Renderer {
   private canvas: HTMLCanvasElement
@@ -65,10 +65,6 @@ export class Renderer {
 
     this.drawAmbient()
 
-    if (events?.shockwave) {
-      this.drawShockwaveEvent(events.shockwave)
-    }
-
     if (events?.sniper) {
       this.drawSniperLasers(events.sniper)
     }
@@ -116,11 +112,6 @@ export class Renderer {
     if (events?.chainExplosion && events.chainExplosion.vignette > 0.01) {
       this.drawChainExplosionVignette(events.chainExplosion.vignette)
     }
-
-    // Screen-fixed frame so shake never leaves a black gap at the edges.
-    if (events?.energyWalls) {
-      this.drawEnergyWalls(events.energyWalls)
-    }
   }
 
   private drawChainExplosionVignette(strength: number): void {
@@ -138,101 +129,6 @@ export class Renderer {
     g.addColorStop(1, `rgba(0, 0, 0, ${0.55 * strength})`)
     ctx.fillStyle = g
     ctx.fillRect(0, 0, this.width, this.height)
-  }
-
-  private drawEnergyWalls(
-    walls: NonNullable<EventVisuals['energyWalls']>,
-  ): void {
-    const ctx = this.ctx
-    const { x, y, w, h, intensity, time, impact } = walls
-    const baseT = EVENTS.energyWalls.borderThickness
-    const openDur = EVENTS.energyWalls.openDuration
-    const maxJerk = EVENTS.energyWalls.impactOffset
-
-    // Soft open (easeOutBack) + fade-linked settle — matches UI motion weight.
-    const rawOpen = clamp(time / openDur, 0, 1)
-    const open = easeOutBack(rawOpen)
-    const settle = easeOutCubic(intensity)
-    const maxInset = Math.min(w, h) * 0.38
-    const inset = (1 - clamp(open, 0, 1) * settle) * maxInset
-
-    const breathe = 0.92 + Math.sin(time * 2.15) * 0.08
-    const thickPulse = 1 + Math.sin(time * 2.15) * 0.05
-    const a = Math.min(1, settle * breathe * (0.4 + 0.6 * clamp(open, 0, 1)))
-    const t = Math.max(
-      1,
-      baseT * easeOutCubic(clamp(open, 0, 1)) * thickPulse * (0.85 + 0.15 * settle),
-    )
-
-    const rx = x + inset
-    const ry = y + inset
-    const rw = Math.max(t * 2, w - inset * 2)
-    const rh = Math.max(t * 2, h - inset * 2)
-
-    // Bounce jerk: hit side punches inward then springs back.
-    const jerk = (v: number) => Math.sin(clamp(v, 0, 1) * Math.PI) * maxJerk
-    const jL = jerk(impact.left)
-    const jR = jerk(impact.right)
-    const jT = jerk(impact.top)
-    const jB = jerk(impact.bottom)
-    const hit =
-      Math.max(impact.left, impact.right, impact.top, impact.bottom)
-
-    const left = rx + t / 2 + jL
-    const right = rx + rw - t / 2 - jR
-    const top = ry + t / 2 + jT
-    const bottom = ry + rh - t / 2 - jB
-
-    ctx.save()
-    ctx.strokeStyle = a >= 0.999 ? '#ffffff' : `rgba(255, 255, 255, ${a})`
-    ctx.lineWidth = t * (1 + hit * 0.35)
-    ctx.lineJoin = 'miter'
-    ctx.miterLimit = 2
-    ctx.beginPath()
-    ctx.moveTo(left, top)
-    ctx.lineTo(right, top)
-    ctx.lineTo(right, bottom)
-    ctx.lineTo(left, bottom)
-    ctx.closePath()
-    ctx.stroke()
-    ctx.restore()
-  }
-
-  private drawShockwaveEvent(
-    sw: NonNullable<EventVisuals['shockwave']>,
-  ): void {
-    const ctx = this.ctx
-    const a = Math.min(1, sw.intensity)
-
-    for (const wave of sw.waves) {
-      // Flat 2D stripe — crisp line + thin uniform wash (no volumetric gradient).
-      ctx.save()
-      ctx.globalAlpha = a
-
-      if (wave.edge === 'top' || wave.edge === 'bottom') {
-        const y = wave.pos
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.06)'
-        ctx.fillRect(0, y - 4, this.width, 8)
-        ctx.strokeStyle = '#ffffff'
-        ctx.lineWidth = 1.5
-        ctx.beginPath()
-        ctx.moveTo(0, y)
-        ctx.lineTo(this.width, y)
-        ctx.stroke()
-      } else {
-        const x = wave.pos
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.06)'
-        ctx.fillRect(x - 4, 0, 8, this.height)
-        ctx.strokeStyle = '#ffffff'
-        ctx.lineWidth = 1.5
-        ctx.beginPath()
-        ctx.moveTo(x, 0)
-        ctx.lineTo(x, this.height)
-        ctx.stroke()
-      }
-
-      ctx.restore()
-    }
   }
 
   private drawSniperLasers(
@@ -479,35 +375,32 @@ export class Renderer {
       const rr = Math.round(ca[0] + (cb[0] - ca[0]) * f)
       const gg = Math.round(ca[1] + (cb[1] - ca[1]) * f)
       const bb = Math.round(ca[2] + (cb[2] - ca[2]) * f)
-      const dprScale = this.dpr > 1.5 ? 1 : 0.78
+      const dprScale = this.dpr > 1.25 ? 0.85 : 1
       const lifeBoost = 0.75 + orb.lifeRatio * 0.45
 
-      // Soft outer bloom
-      ctx.globalAlpha = alpha * 0.55
-      ctx.shadowColor = `rgba(${rr}, ${gg}, ${bb}, 0.9)`
-      ctx.shadowBlur = PRIZE_ORB.glowBlur * 1.65 * dprScale * lifeBoost
+      // Soft bloom via radial fill (no shadowBlur — expensive at 120 Hz).
+      const bloom = ctx.createRadialGradient(
+        0,
+        0,
+        r * 0.2,
+        0,
+        0,
+        r * 2.4 * lifeBoost,
+      )
+      bloom.addColorStop(0, `rgba(255, 255, 255, ${0.95 * alpha})`)
+      bloom.addColorStop(0.35, `rgba(${rr}, ${gg}, ${bb}, ${0.55 * alpha})`)
+      bloom.addColorStop(1, `rgba(${rr}, ${gg}, ${bb}, 0)`)
+      ctx.globalAlpha = 1
+      ctx.fillStyle = bloom
       ctx.beginPath()
-      ctx.arc(0, 0, r * 1.15, 0, Math.PI * 2)
-      ctx.fillStyle = `rgba(${rr}, ${gg}, ${bb}, 0.35)`
+      ctx.arc(0, 0, r * 2.4 * lifeBoost * dprScale, 0, Math.PI * 2)
       ctx.fill()
 
-      // Mid bloom
-      ctx.globalAlpha = alpha * 0.75
-      ctx.shadowBlur = PRIZE_ORB.glowBlur * dprScale * lifeBoost
-      ctx.beginPath()
-      ctx.arc(0, 0, r * 0.95, 0, Math.PI * 2)
-      ctx.fillStyle = `rgba(255, 255, 255, 0.45)`
-      ctx.fill()
-
-      // Core
-      ctx.shadowColor = `rgb(${rr}, ${gg}, ${bb})`
-      ctx.shadowBlur = PRIZE_ORB.glowBlur * 0.7 * dprScale
       ctx.globalAlpha = alpha
       ctx.beginPath()
       ctx.arc(0, 0, r, 0, Math.PI * 2)
       ctx.fillStyle = '#FFFFFF'
       ctx.fill()
-      ctx.shadowBlur = 0
     } else {
       ctx.globalAlpha = alpha
       ctx.beginPath()

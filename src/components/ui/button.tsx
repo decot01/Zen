@@ -66,7 +66,7 @@ export function Button({
       type={type}
       className={cn(buttonVariants({ variant, size }), className)}
       onPointerDown={(e) => {
-        if (!e.button) pulseHaptic('tap')
+        if (!e.button) pulseHaptic('ui')
         onPointerDown?.(e)
       }}
       {...props}

@@ -3,30 +3,24 @@ import { randomRange } from '@/utils/random'
 import { BaseEvent } from './BaseEvent'
 import { BerserkEvent } from './BerserkEvent'
 import { ChainExplosionEvent } from './ChainExplosionEvent'
-import { EnergyWallsEvent } from './EnergyWallsEvent'
 import {
   EVENT_LABELS,
   type EventContext,
   type EventId,
   type EventVisuals,
 } from './EventContext'
-import { ShockwaveEvent } from './ShockwaveEvent'
 import { SniperEvent } from './SniperEvent'
 import type { Orb } from '../Orb'
 
 type Factory = () => BaseEvent
 
 const FACTORIES: Record<EventId, Factory> = {
-  energyWalls: () => new EnergyWallsEvent(),
-  shockwave: () => new ShockwaveEvent(),
   berserk: () => new BerserkEvent(),
   chainExplosion: () => new ChainExplosionEvent(),
   sniper: () => new SniperEvent(),
 }
 
 const UNLOCK: Record<EventId, number> = {
-  energyWalls: EVENTS.energyWalls.unlockStage,
-  shockwave: EVENTS.shockwave.unlockStage,
   berserk: EVENTS.berserk.unlockStage,
   chainExplosion: EVENTS.chainExplosion.unlockStage,
   sniper: EVENTS.sniper.unlockStage,
@@ -109,25 +103,6 @@ export class EventManager {
   getVisuals(ctx: EventContext): EventVisuals {
     const id = this.activeId
     const fade = this.fade
-    const energy =
-      id === 'energyWalls' && this.active instanceof EnergyWallsEvent
-        ? {
-            intensity: fade,
-            time: this.active.time,
-            x: 0,
-            y: 0,
-            w: ctx.width,
-            h: ctx.height,
-            impact: { ...this.active.impact },
-          }
-        : null
-    const shockwave =
-      id === 'shockwave' && this.active instanceof ShockwaveEvent
-        ? {
-            intensity: fade,
-            waves: this.active.getWaveVisuals(fade),
-          }
-        : null
     const chainExplosion =
       id === 'chainExplosion' && this.active instanceof ChainExplosionEvent
         ? {
@@ -144,8 +119,6 @@ export class EventManager {
       activeEvent: id,
       eventLabel: this.activeLabel,
       fade,
-      energyWalls: energy,
-      shockwave,
       chainExplosion,
       sniper,
     }

@@ -76,9 +76,10 @@ body,
 }
 
 :root {
-  --zen-safe-top: 0px;
-  --zen-safe-bottom: 0px;
-  --zen-spawn-top: 108px;
+  --zen-safe-top: max(env(safe-area-inset-top, 0px), 0px);
+  --zen-safe-bottom: max(env(safe-area-inset-bottom, 0px), 0px);
+  --zen-hud-extra: 18px;
+  --zen-spawn-top: 148px;
 }
 
 body {

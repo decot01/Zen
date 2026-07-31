@@ -15,9 +15,6 @@ export class Enemy {
    * Chain Explosion charge: null = idle, 0→1 while charging toward blast.
    */
   chargeT: number | null = null
-  /** Shockwave knockback velocity (decays). */
-  knockVx = 0
-  knockVy = 0
   private baseRadius: number = ENEMY.radius
   private phase: number
 
@@ -49,11 +46,6 @@ export class Enemy {
     this.chargeT = null
   }
 
-  applyKnock(vx: number, vy: number): void {
-    this.knockVx += vx
-    this.knockVy += vy
-  }
-
   get charging(): boolean {
     return this.chargeT != null
   }
@@ -68,14 +60,6 @@ export class Enemy {
     bounds?: { minX: number; maxX: number; minY: number; maxY: number },
   ): void {
     this.age += dt
-
-    const damp = Math.exp(-EVENTS.shockwave.knockDecay * dt)
-    this.baseX += this.knockVx * dt
-    this.baseY += this.knockVy * dt
-    this.knockVx *= damp
-    this.knockVy *= damp
-    if (Math.abs(this.knockVx) < 4) this.knockVx = 0
-    if (Math.abs(this.knockVy) < 4) this.knockVy = 0
 
     if (bounds) {
       this.baseX = clamp(this.baseX, bounds.minX, bounds.maxX)
