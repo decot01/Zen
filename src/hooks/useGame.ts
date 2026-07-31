@@ -6,6 +6,7 @@ import {
   requestTelegramFullscreen,
   syncTelegramSafeArea,
 } from '@/lib/telegram'
+import { lockPortraitOrientation } from '@/lib/orientation'
 
 const INITIAL: GameSnapshot = {
   phase: 'menu',
@@ -206,6 +207,7 @@ export function useGame() {
     onPointerUp,
     play: () => {
       requestTelegramFullscreen()
+      lockPortraitOrientation()
       syncTelegramSafeArea()
       void syncRecordsWithCloud().then((records) => {
         game.applySyncedRecords(records.bestScore, records.highCombo)
@@ -216,6 +218,7 @@ export function useGame() {
     resume: () => game.resume(),
     restart: () => {
       requestTelegramFullscreen()
+      lockPortraitOrientation()
       syncTelegramSafeArea()
       game.restart()
     },

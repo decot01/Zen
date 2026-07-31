@@ -162,6 +162,11 @@ export default function App() {
         className="pointer-events-none absolute inset-0 z-[5] bg-[radial-gradient(ellipse_at_center,transparent_62%,rgba(0,0,0,0.28)_100%)]"
       />
       <div aria-hidden className="noise-overlay" />
+
+      {/* Fallback when OS/browser ignores orientation.lock */}
+      <div className="zen-rotate-gate" role="dialog" aria-live="polite">
+        <p className="zen-rotate-gate__text">Portrait only</p>
+      </div>
     </div>
   )
 }

@@ -58,7 +58,8 @@ export const ENEMY = {
 } as const
 
 export const DIFFICULTY = {
-  intervalSeconds: 15,
+  /** Stage N at N × interval (stage 2 ≈ 20s). */
+  intervalSeconds: 10,
   enemyIncrement: 1,
   speedMultiplier: 1.045,
   spawnRateMultiplier: 0.92,
@@ -85,7 +86,7 @@ export const PRIZE_ORB = {
   hitRadius: 11,
   score: 100,
   lifetime: 5,
-  /** Appear starting from difficulty stage 2 (after ~15s). */
+  /** Appear starting from difficulty stage 1 (after ~10s). */
   minDifficultyTicks: 1,
   firstDelayMin: 4,
   firstDelayMax: 9,
@@ -168,6 +169,7 @@ export const EVENTS = {
   fadeIn: 0.55,
   fadeOut: 0.55,
   energyWalls: {
+    /** Early pool opens together so first event is not always walls. */
     unlockStage: 2,
     duration: 12,
     /** White frame thickness along playfield edges. */
@@ -185,7 +187,7 @@ export const EVENTS = {
     impactOffset: 12,
   },
   shockwave: {
-    unlockStage: 3,
+    unlockStage: 2,
     duration: 12,
     intervalMin: 2.5,
     intervalMax: 3.0,
@@ -199,14 +201,14 @@ export const EVENTS = {
     knockDecay: 3.8,
   },
   berserk: {
-    unlockStage: 4,
+    unlockStage: 2,
     duration: 18,
     radiusMul: 1.55,
     huntSpeed: 95,
     glowMul: 2.4,
   },
   chainExplosion: {
-    unlockStage: 6,
+    unlockStage: 4,
     durationMin: 12,
     durationMax: 15,
     /** Seconds between spontaneous charge picks. */
@@ -223,7 +225,7 @@ export const EVENTS = {
     warnParticleInterval: 0.07,
   },
   sniper: {
-    unlockStage: 6,
+    unlockStage: 4,
     duration: 15,
     /** Seconds between drone appearances. */
     interval: 3,
@@ -241,7 +243,7 @@ export const EVENTS = {
   crossfire: {
     /** Disabled — keep code, exclude from schedule. */
     enabled: false,
-    unlockStage: 8,
+    unlockStage: 6,
     duration: 12,
     maxWaves: 7,
     /** Warning total ≈ track + lock = 1.5s. */
@@ -253,7 +255,7 @@ export const EVENTS = {
   bulletHell: {
     /** Disabled — keep code, exclude from schedule. */
     enabled: false,
-    unlockStage: 10,
+    unlockStage: 8,
     duration: 15,
     maxWaves: 7,
     /** Red crossfire warning ≈ 1.5s. */
@@ -271,7 +273,7 @@ export const EVENTS = {
   phaseShift: {
     /** Disabled — keep code, exclude from schedule. */
     enabled: false,
-    unlockStage: 6,
+    unlockStage: 4,
     duration: 15,
     phaseDuration: 2,
     interval: 2,
@@ -283,7 +285,7 @@ export const EVENTS = {
   radar: {
     /** Disabled — keep code, exclude from schedule. */
     enabled: false,
-    unlockStage: 7,
+    unlockStage: 5,
     duration: 15,
     interval: 3.25,
     maxPulses: 5,

@@ -1,3 +1,5 @@
+import { lockPortraitOrientation } from '@/lib/orientation'
+
 /**
  * Thin wrapper around Telegram.WebApp (script in index.html).
  * No-ops outside Telegram so the game still runs on the open web.
@@ -52,6 +54,9 @@ export interface TelegramWebApp {
   disableVerticalSwipes?: () => void
   requestFullscreen?: () => void
   exitFullscreen?: () => void
+  lockOrientation?: () => void
+  unlockOrientation?: () => void
+  isOrientationLocked?: boolean
   setHeaderColor?: (color: string) => void
   setBackgroundColor?: (color: string) => void
   isExpanded: boolean
@@ -145,6 +150,7 @@ export function requestTelegramFullscreen(): void {
   try {
     wa.expand()
     wa.requestFullscreen?.()
+    lockPortraitOrientation()
   } catch {
     // Client may show its own Fullscreen button instead.
   }
@@ -163,6 +169,7 @@ export function initTelegramMiniApp(): void {
     // Hold-to-play conflicts with TG's pull-to-close gesture.
     wa.disableVerticalSwipes?.()
     wa.requestFullscreen?.()
+    lockPortraitOrientation()
   } catch {
     // Older Telegram clients may miss some methods.
   }
