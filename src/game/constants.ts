@@ -53,18 +53,20 @@ export const ENEMY = {
   armDuration: 0.7,
   spawnAlpha: 0.4,
   initialCount: 3,
-  maxCount: 14,
+  maxCount: 10,
   pulseSpeed: 2.4,
 } as const
 
 export const DIFFICULTY = {
   /** Stage N at N × interval (stage 2 ≈ 20s). */
   intervalSeconds: 10,
+  /** Add an enemy every N difficulty ticks (keeps mid-game breathable). */
+  enemyEveryTicks: 2,
   enemyIncrement: 1,
   speedMultiplier: 1.045,
   spawnRateMultiplier: 0.92,
-  safeRadiusShrink: 0.95,
-  minSafeRadius: 70,
+  safeRadiusShrink: 0.96,
+  minSafeRadius: 78,
   initialSafeRadius: 105,
   initialBonusOrbInterval: 8,
   minBonusOrbInterval: 4,

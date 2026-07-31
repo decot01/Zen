@@ -28,6 +28,20 @@ export const transitionSpringSnappy: Transition = {
   mass: 0.9,
 }
 
+/** Segmented control / switch — Stalzone ExtremeInOut, quick glide. */
+export const transitionSwitch: Transition = {
+  type: 'tween',
+  duration: 0.32,
+  ease: EASE_EXTREME,
+}
+
+/** Label color on the same control. */
+export const transitionSwitchLabel: Transition = {
+  type: 'tween',
+  duration: 0.26,
+  ease: EASE_EXTREME,
+}
+
 export const overlayVariants: Variants = {
   initial: { opacity: 0 },
   animate: {

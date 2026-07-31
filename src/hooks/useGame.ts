@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { Game, type GameSnapshot } from '@/game/Game'
+import type { GameMode } from '@/game/mode'
 import { flushRecordsToCloud, syncRecordsWithCloud } from '@/lib/cloudSync'
 import {
   getTelegramWebApp,
@@ -7,17 +8,21 @@ import {
   syncTelegramSafeArea,
 } from '@/lib/telegram'
 import { lockPortraitOrientation } from '@/lib/orientation'
+import { loadSettings } from '@/utils/storage'
+
+const settings = loadSettings()
 
 const INITIAL: GameSnapshot = {
   phase: 'menu',
+  mode: settings.mode,
   score: 0,
-  bestScore: 0,
+  bestScore: settings.records[settings.mode].bestScore,
   combo: 1,
-  highCombo: 1,
+  highCombo: settings.records[settings.mode].highCombo,
   runMaxCombo: 1,
   elapsed: 0,
-  muted: false,
-  haptics: true,
+  muted: settings.muted,
+  haptics: settings.haptics,
   isNewBest: false,
   dying: false,
   activeEvent: null,
@@ -26,6 +31,7 @@ const INITIAL: GameSnapshot = {
 function snapshotsEqual(a: GameSnapshot, b: GameSnapshot): boolean {
   return (
     a.phase === b.phase &&
+    a.mode === b.mode &&
     a.score === b.score &&
     a.bestScore === b.bestScore &&
     a.combo === b.combo &&
@@ -69,7 +75,8 @@ export function useGame() {
     const apply = async () => {
       const records = await syncRecordsWithCloud()
       if (cancelled) return
-      game.applySyncedRecords(records.bestScore, records.highCombo)
+      const { synced: _synced, ...bundle } = records
+      game.applySyncedRecords(bundle)
     }
 
     void apply()
@@ -94,17 +101,19 @@ export function useGame() {
     if (snapshot.phase !== 'gameover') return
     let cancelled = false
     void (async () => {
-      const ok = await flushRecordsToCloud(snapshot.bestScore, snapshot.highCombo)
+      const local = loadSettings().records
+      const ok = await flushRecordsToCloud(local)
       if (cancelled || ok) return
       const records = await syncRecordsWithCloud()
       if (!cancelled) {
-        game.applySyncedRecords(records.bestScore, records.highCombo)
+        const { synced: _synced, ...bundle } = records
+        game.applySyncedRecords(bundle)
       }
     })()
     return () => {
       cancelled = true
     }
-  }, [game, snapshot.phase, snapshot.bestScore, snapshot.highCombo])
+  }, [game, snapshot.phase, snapshot.mode, snapshot.bestScore, snapshot.highCombo])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -205,12 +214,14 @@ export function useGame() {
     onPointerDown,
     onPointerMove,
     onPointerUp,
+    setMode: (mode: GameMode) => game.setMode(mode),
     play: () => {
       requestTelegramFullscreen()
       lockPortraitOrientation()
       syncTelegramSafeArea()
       void syncRecordsWithCloud().then((records) => {
-        game.applySyncedRecords(records.bestScore, records.highCombo)
+        const { synced: _synced, ...bundle } = records
+        game.applySyncedRecords(bundle)
       })
       game.play()
     },

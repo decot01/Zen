@@ -1,5 +1,7 @@
+import type { ModeRecords, ModeRecordsMap } from '@/game/mode'
+import { emptyModeRecordsMap } from '@/game/mode'
 import { getTelegramWebApp } from '@/lib/telegram'
-import { loadSettings, saveSettings, type StoredSettings } from '@/utils/storage'
+import { loadSettings, saveSettings } from '@/utils/storage'
 
 /** CloudStorage keys: only [A-Za-z0-9_-], 1–128 chars. */
 const KEY_RECORDS = 'zen_records'
@@ -11,51 +13,34 @@ const LEGACY_COMBO = 'zen_highCombo'
 const CACHE_KEY = 'zen.cloud.v1'
 const CALL_TIMEOUT_MS = 4000
 
-type CloudRecords = {
-  bestScore: number
-  highCombo: number
-}
+type CloudRecords = ModeRecords
+type CloudBundle = ModeRecordsMap
 
 export type SyncStatus =
   | { state: 'off' }
   | { state: 'syncing' }
-  | { state: 'ok'; bestScore: number; highCombo: number }
+  | { state: 'ok'; records: CloudBundle }
   | { state: 'error'; message: string }
 
 let lastStatus: SyncStatus = { state: 'off' }
 const statusListeners = new Set<(s: SyncStatus) => void>()
 
-let inflightSync: Promise<
-  Pick<StoredSettings, 'bestScore' | 'highCombo'> & { synced: boolean }
-> | null = null
-
+let inflightSync: Promise<CloudBundle & { synced: boolean }> | null = null
 let inflightFlush: Promise<boolean> | null = null
 
-function readCache(): CloudRecords | null {
+function readCache(): CloudBundle | null {
   try {
     const raw = localStorage.getItem(CACHE_KEY)
     if (!raw) return null
-    const parsed: unknown = JSON.parse(raw)
-    if (!parsed || typeof parsed !== 'object') return null
-    const v = parsed as Record<string, unknown>
-    const bestScore = asScore(v.bestScore, 0)
-    const highCombo = asScore(v.highCombo, 1)
-    if (bestScore == null) return null
-    return { bestScore, highCombo: highCombo ?? 1 }
+    return parseCloudBundle(JSON.parse(raw))
   } catch {
     return null
   }
 }
 
-function writeCache(records: CloudRecords): void {
+function writeCache(records: CloudBundle): void {
   try {
-    localStorage.setItem(
-      CACHE_KEY,
-      JSON.stringify({
-        bestScore: records.bestScore,
-        highCombo: records.highCombo,
-      }),
-    )
+    localStorage.setItem(CACHE_KEY, JSON.stringify(records))
   } catch {
     // ignore
   }
@@ -67,11 +52,10 @@ function seedStatusFromCache(): void {
     return
   }
   const cached = readCache()
-  const local = loadSettings()
-  const bestScore = Math.max(cached?.bestScore ?? 0, local.bestScore)
-  const highCombo = Math.max(cached?.highCombo ?? 1, local.highCombo)
-  if (bestScore > 0 || (cached && cached.bestScore >= 0)) {
-    lastStatus = { state: 'ok', bestScore, highCombo }
+  const local = loadSettings().records
+  const merged = mergeBundles(local, cached)
+  if (hasAnyScore(merged) || cached) {
+    lastStatus = { state: 'ok', records: merged }
   }
 }
 
@@ -89,7 +73,7 @@ export function subscribeSyncStatus(listener: (s: SyncStatus) => void): () => vo
 
 function setStatus(next: SyncStatus): void {
   lastStatus = next
-  if (next.state === 'ok') writeCache(next)
+  if (next.state === 'ok') writeCache(next.records)
   statusListeners.forEach((fn) => fn(next))
 }
 
@@ -118,6 +102,15 @@ function asScore(value: unknown, min: number): number | null {
   return Math.max(min, Math.floor(n))
 }
 
+function hasAnyScore(bundle: CloudBundle): boolean {
+  return (
+    bundle.zen.bestScore > 0 ||
+    bundle.zen.highCombo > 1 ||
+    bundle.survival.bestScore > 0 ||
+    bundle.survival.highCombo > 1
+  )
+}
+
 function parseMaybeJson(raw: unknown): unknown {
   let cur: unknown = raw
   for (let i = 0; i < 2; i++) {
@@ -133,7 +126,7 @@ function parseMaybeJson(raw: unknown): unknown {
   return cur
 }
 
-function parseRecordsBlob(raw: unknown): CloudRecords | null {
+function parseFlatRecords(raw: unknown): CloudRecords | null {
   const data = parseMaybeJson(raw)
   if (data == null || data === '') return null
   if (typeof data === 'number') {
@@ -152,6 +145,28 @@ function parseRecordsBlob(raw: unknown): CloudRecords | null {
     bestScore: bestScore ?? 0,
     highCombo: highCombo ?? 1,
   }
+}
+
+/** v2 nested modes, or legacy flat blob → survival. */
+function parseCloudBundle(raw: unknown): CloudBundle | null {
+  const data = parseMaybeJson(raw)
+  if (data == null || data === '' || typeof data !== 'object') return null
+  const v = data as Record<string, unknown>
+
+  if (v.zen != null || v.survival != null) {
+    const bundle = emptyModeRecordsMap()
+    const zen = parseFlatRecords(v.zen)
+    const survival = parseFlatRecords(v.survival)
+    if (zen) bundle.zen = zen
+    if (survival) bundle.survival = survival
+    return bundle
+  }
+
+  const flat = parseFlatRecords(data)
+  if (!flat) return null
+  const bundle = emptyModeRecordsMap()
+  bundle.survival = flat
+  return bundle
 }
 
 function isErrorValue(err: unknown): boolean {
@@ -192,18 +207,17 @@ function cloudCall<T>(
 }
 
 async function readCloudRecords(): Promise<
-  { ok: true; records: CloudRecords | null } | { ok: false; error: string }
+  { ok: true; records: CloudBundle | null } | { ok: false; error: string }
 > {
   const cloud = getWebApp()?.CloudStorage
   if (!cloud) return { ok: false, error: 'no-cloud' }
 
-  // Fast path: one key. Legacy keys only if the main blob is empty.
   const primary = await cloudCall<string>((cb) => {
     cloud.getItem(KEY_RECORDS, (error, value) => cb(error, value))
   })
   if (!primary.ok) return { ok: false, error: primary.error ?? 'read-failed' }
 
-  const fromBlob = parseRecordsBlob(primary.result)
+  const fromBlob = parseCloudBundle(primary.result)
   if (fromBlob) return { ok: true, records: fromBlob }
 
   const legacy = await cloudCall<unknown>((cb) => {
@@ -229,18 +243,28 @@ async function readCloudRecords(): Promise<
   )
 
   if (bestScore <= 0 && highCombo <= 1) return { ok: true, records: null }
-  return { ok: true, records: { bestScore, highCombo } }
+  const bundle = emptyModeRecordsMap()
+  bundle.survival = { bestScore, highCombo }
+  return { ok: true, records: bundle }
 }
 
-async function writeCloudRecords(records: CloudRecords): Promise<
+async function writeCloudRecords(records: CloudBundle): Promise<
   { ok: true } | { ok: false; error: string }
 > {
   const cloud = getWebApp()?.CloudStorage
   if (!cloud) return { ok: false, error: 'no-cloud' }
 
-  const best = Math.max(0, Math.floor(records.bestScore))
-  const combo = Math.max(1, Math.floor(records.highCombo))
-  const payload = JSON.stringify({ bestScore: best, highCombo: combo })
+  const payload = JSON.stringify({
+    v: 2,
+    zen: {
+      bestScore: Math.max(0, Math.floor(records.zen.bestScore)),
+      highCombo: Math.max(1, Math.floor(records.zen.highCombo)),
+    },
+    survival: {
+      bestScore: Math.max(0, Math.floor(records.survival.bestScore)),
+      highCombo: Math.max(1, Math.floor(records.survival.highCombo)),
+    },
+  })
 
   const saved = await cloudCall<boolean>((cb) => {
     cloud.setItem(KEY_RECORDS, payload, (error, stored) => cb(error, stored))
@@ -261,28 +285,38 @@ function mergeRecords(
   }
 }
 
-function sameRecords(a: CloudRecords, b: CloudRecords | null | undefined): boolean {
-  if (!b) return false
-  return a.bestScore === b.bestScore && a.highCombo === b.highCombo
+function mergeBundles(
+  a: CloudBundle,
+  b: CloudBundle | null | undefined,
+): CloudBundle {
+  return {
+    zen: mergeRecords(a.zen, b?.zen),
+    survival: mergeRecords(a.survival, b?.survival),
+  }
 }
 
-function markOk(records: CloudRecords): void {
-  setStatus({
-    state: 'ok',
-    bestScore: records.bestScore,
-    highCombo: records.highCombo,
-  })
+function sameBundles(a: CloudBundle, b: CloudBundle | null | undefined): boolean {
+  if (!b) return false
+  return (
+    a.zen.bestScore === b.zen.bestScore &&
+    a.zen.highCombo === b.zen.highCombo &&
+    a.survival.bestScore === b.survival.bestScore &&
+    a.survival.highCombo === b.survival.highCombo
+  )
+}
+
+function markOk(records: CloudBundle): void {
+  setStatus({ state: 'ok', records })
 }
 
 /** Push local personal records (read→merge→write). */
-export function pushRecordsToCloud(bestScore: number, highCombo: number): void {
-  void flushRecordsToCloud(bestScore, highCombo)
+export function pushRecordsToCloud(records: CloudBundle): void {
+  void flushRecordsToCloud(records)
 }
 
 /** Awaitable push — use after a new best so the write finishes before close. */
 export async function flushRecordsToCloud(
-  bestScore: number,
-  highCombo: number,
+  records: CloudBundle,
 ): Promise<boolean> {
   if (!cloudSupported()) {
     setStatus({ state: 'off' })
@@ -291,20 +325,19 @@ export async function flushRecordsToCloud(
   if (inflightFlush) return inflightFlush
 
   inflightFlush = (async () => {
-    // Optimistic: show the new score immediately while cloud catches up.
     markOk(
-      mergeRecords(
-        { bestScore, highCombo },
-        lastStatus.state === 'ok' ? lastStatus : readCache(),
+      mergeBundles(
+        records,
+        lastStatus.state === 'ok' ? lastStatus.records : readCache(),
       ),
     )
     try {
       const remote = await readCloudRecords()
       const merged = remote.ok
-        ? mergeRecords({ bestScore, highCombo }, remote.records)
-        : { bestScore, highCombo }
+        ? mergeBundles(records, remote.records)
+        : records
 
-      if (remote.ok && sameRecords(merged, remote.records)) {
+      if (remote.ok && sameBundles(merged, remote.records)) {
         markOk(merged)
         return true
       }
@@ -334,27 +367,22 @@ export async function flushRecordsToCloud(
 }
 
 /**
- * Pull cloud, merge with local (max wins), save both sides.
- * Skips write when cloud already has the merged values (big latency win).
+ * Pull cloud, merge with local (max wins per mode), save both sides.
  */
 export async function syncRecordsWithCloud(): Promise<
-  Pick<StoredSettings, 'bestScore' | 'highCombo'> & { synced: boolean }
+  CloudBundle & { synced: boolean }
 > {
-  const local = loadSettings()
+  const local = loadSettings().records
   if (!cloudSupported()) {
     setStatus({ state: 'off' })
-    return { bestScore: local.bestScore, highCombo: local.highCombo, synced: false }
+    return { ...local, synced: false }
   }
   if (inflightSync) return inflightSync
 
-  // Instant UI from cache/local — never park on "sync…" if we already know a score.
   if (lastStatus.state !== 'ok') {
     const cached = readCache()
-    const provisional = mergeRecords(
-      { bestScore: local.bestScore, highCombo: local.highCombo },
-      cached,
-    )
-    if (provisional.bestScore > 0) markOk(provisional)
+    const provisional = mergeBundles(local, cached)
+    if (hasAnyScore(provisional)) markOk(provisional)
   }
 
   inflightSync = (async () => {
@@ -363,46 +391,30 @@ export async function syncRecordsWithCloud(): Promise<
       const remote = await readCloudRecords()
 
       if (!remote.ok) {
-        // Read can time out while write still works — try once, keep UI on cache.
-        if (freshLocal.bestScore > 0 || freshLocal.highCombo > 1) {
-          void writeCloudRecords({
-            bestScore: freshLocal.bestScore,
-            highCombo: freshLocal.highCombo,
-          })
+        if (hasAnyScore(freshLocal.records)) {
+          void writeCloudRecords(freshLocal.records)
         }
-        const fallback = mergeRecords(
-          { bestScore: freshLocal.bestScore, highCombo: freshLocal.highCombo },
-          lastStatus.state === 'ok' ? lastStatus : readCache(),
+        const fallback = mergeBundles(
+          freshLocal.records,
+          lastStatus.state === 'ok' ? lastStatus.records : readCache(),
         )
-        if (fallback.bestScore > 0 || lastStatus.state === 'ok') {
+        if (hasAnyScore(fallback) || lastStatus.state === 'ok') {
           markOk(fallback)
         } else {
           setStatus({ state: 'error', message: remote.error })
         }
-        return {
-          bestScore: fallback.bestScore,
-          highCombo: fallback.highCombo,
-          synced: false,
-        }
+        return { ...fallback, synced: false }
       }
 
-      const merged = mergeRecords(
-        { bestScore: freshLocal.bestScore, highCombo: freshLocal.highCombo },
-        remote.records,
-      )
+      const merged = mergeBundles(freshLocal.records, remote.records)
 
-      if (
-        merged.bestScore !== freshLocal.bestScore ||
-        merged.highCombo !== freshLocal.highCombo
-      ) {
-        saveSettings({ ...freshLocal, ...merged })
+      if (!sameBundles(merged, freshLocal.records)) {
+        saveSettings({ ...freshLocal, records: merged })
       }
 
-      // Already in sync — skip setItem (often the slow half of the wait).
-      if (!sameRecords(merged, remote.records)) {
+      if (!sameBundles(merged, remote.records)) {
         const written = await writeCloudRecords(merged)
         if (!written.ok) {
-          // Still apply merged locally; cloud write can retry later.
           markOk(merged)
           return { ...merged, synced: false }
         }
@@ -411,14 +423,14 @@ export async function syncRecordsWithCloud(): Promise<
       markOk(merged)
       return { ...merged, synced: true }
     } catch (error) {
-      const fresh = loadSettings()
+      const fresh = loadSettings().records
       if (lastStatus.state !== 'ok') {
         setStatus({
           state: 'error',
           message: error instanceof Error ? error.message : 'sync-failed',
         })
       }
-      return { bestScore: fresh.bestScore, highCombo: fresh.highCombo, synced: false }
+      return { ...fresh, synced: false }
     } finally {
       inflightSync = null
     }

@@ -20,14 +20,20 @@ import { Player } from './Player'
 import { Renderer } from './Renderer'
 import { Spawner } from './Spawner'
 import { getChromeInsets, isTelegramMiniApp } from '@/lib/telegram'
-import { loadSettings, updateSettings } from '@/utils/storage'
+import { loadSettings, updateModeRecords, updateSettings } from '@/utils/storage'
 import { length } from '@/utils/math'
 import { randomRange } from '@/utils/random'
+import {
+  emptyModeRecordsMap,
+  type GameMode,
+  type ModeRecordsMap,
+} from './mode'
 
 export type GamePhase = 'menu' | 'playing' | 'paused' | 'gameover'
 
 export interface GameSnapshot {
   phase: GamePhase
+  mode: GameMode
   score: number
   bestScore: number
   combo: number
@@ -57,10 +63,10 @@ export class Game {
   private enemies: Enemy[] = []
 
   private phase: GamePhase = 'menu'
+  private mode: GameMode = 'survival'
+  private records: ModeRecordsMap = emptyModeRecordsMap()
   private score = 0
-  private bestScore = 0
   private combo = 1
-  private highCombo = 1
   private runMaxCombo = 1
   private comboTimer = 0
   private elapsed = 0
@@ -70,6 +76,28 @@ export class Game {
   private bonusOrbTimer = 0
   private prizeOrbTimer = 0
   private isNewBest = false
+
+  private get bestScore(): number {
+    return this.records[this.mode].bestScore
+  }
+
+  private get highCombo(): number {
+    return this.records[this.mode].highCombo
+  }
+
+  private setBestScore(value: number): void {
+    this.records[this.mode] = {
+      ...this.records[this.mode],
+      bestScore: value,
+    }
+  }
+
+  private setHighCombo(value: number): void {
+    this.records[this.mode] = {
+      ...this.records[this.mode],
+      highCombo: value,
+    }
+  }
 
   private width = 0
   private height = 0
@@ -92,24 +120,37 @@ export class Game {
 
   constructor() {
     const settings = loadSettings()
-    this.bestScore = settings.bestScore
-    this.highCombo = settings.highCombo
+    this.mode = settings.mode
+    this.records = settings.records
     this.audio.setMuted(settings.muted)
     this.haptics.setEnabled(settings.haptics)
   }
 
-  /** Apply cloud-merged personal records (keeps the higher values). */
-  applySyncedRecords(bestScore: number, highCombo: number): void {
+  /** Apply cloud-merged personal records (keeps the higher values per mode). */
+  applySyncedRecords(records: ModeRecordsMap): void {
     let changed = false
-    if (bestScore > this.bestScore) {
-      this.bestScore = bestScore
-      changed = true
-    }
-    if (highCombo > this.highCombo) {
-      this.highCombo = highCombo
-      changed = true
+    for (const mode of ['zen', 'survival'] as const) {
+      const next = records[mode]
+      const cur = this.records[mode]
+      if (
+        next.bestScore > cur.bestScore ||
+        next.highCombo > cur.highCombo
+      ) {
+        this.records[mode] = {
+          bestScore: Math.max(cur.bestScore, next.bestScore),
+          highCombo: Math.max(cur.highCombo, next.highCombo),
+        }
+        changed = true
+      }
     }
     if (changed) this.emit(true)
+  }
+
+  setMode(mode: GameMode): void {
+    if (this.mode === mode) return
+    this.mode = mode
+    updateSettings({ mode })
+    this.emit(true)
   }
 
   setListener(listener: SnapshotListener | null): void {
@@ -150,6 +191,7 @@ export class Game {
   getSnapshot(): GameSnapshot {
     return {
       phase: this.phase,
+      mode: this.mode,
       score: this.score,
       bestScore: this.bestScore,
       combo: this.combo,
@@ -160,7 +202,7 @@ export class Game {
       haptics: this.haptics.isEnabled(),
       isNewBest: this.isNewBest,
       dying: this.dying,
-      activeEvent: this.eventManager.activeLabel,
+      activeEvent: this.mode === 'zen' ? null : this.eventManager.activeLabel,
     }
   }
 
@@ -433,7 +475,9 @@ export class Game {
     )
 
     const ctx = this.buildEventContext(dt)
-    this.eventManager.update(dt, ctx)
+    if (this.mode === 'survival') {
+      this.eventManager.update(dt, ctx)
+    }
     this.refillEnemiesToTarget()
     if (this.pendingBlastKill) {
       this.pendingBlastKill = false
@@ -592,10 +636,12 @@ export class Game {
   }
 
   private applyDifficulty(): void {
-    this.targetEnemyCount = Math.min(
-      ENEMY.maxCount,
-      this.targetEnemyCount + DIFFICULTY.enemyIncrement,
-    )
+    if (this.difficultyTicks % DIFFICULTY.enemyEveryTicks === 0) {
+      this.targetEnemyCount = Math.min(
+        ENEMY.maxCount,
+        this.targetEnemyCount + DIFFICULTY.enemyIncrement,
+      )
+    }
     this.refillEnemiesToTarget()
     this.player.scaleDifficulty(DIFFICULTY.speedMultiplier)
     this.spawner.shrinkSafeSpace(DIFFICULTY.safeRadiusShrink)
@@ -641,8 +687,8 @@ export class Game {
       this.runMaxCombo = this.combo
     }
     if (this.combo > this.highCombo) {
-      this.highCombo = this.combo
-      updateSettings({ highCombo: this.highCombo })
+      this.setHighCombo(this.combo)
+      updateModeRecords(this.mode, { highCombo: this.highCombo })
     }
 
     const isPrize = hit.kind === 'prize'
@@ -669,8 +715,10 @@ export class Game {
       this.audio.playCombo(this.combo)
     }
 
-    const ctx = this.buildEventContext(0)
-    this.eventManager.onOrbCollected(hit, ctx)
+    if (this.mode === 'survival') {
+      const ctx = this.buildEventContext(0)
+      this.eventManager.onOrbCollected(hit, ctx)
+    }
 
     if (isPrize) {
       hit.alive = false
@@ -733,9 +781,9 @@ export class Game {
     this.deathDelay = 0.38
 
     if (this.score > this.bestScore) {
-      this.bestScore = this.score
+      this.setBestScore(this.score)
       this.isNewBest = true
-      updateSettings({ bestScore: this.bestScore })
+      updateModeRecords(this.mode, { bestScore: this.bestScore })
     } else {
       this.isNewBest = false
     }

@@ -222,7 +222,10 @@ export function IntelGlow({
       <div
         ref={ringsRef}
         className="zen-aie-rings"
-        style={{ opacity: intensity }}
+        style={{
+          opacity: intensity,
+          transition: 'opacity 0.32s cubic-bezier(0.34, 1.24, 0.64, 1)',
+        }}
       />
       <div className="zen-aie-content">{children}</div>
     </div>
